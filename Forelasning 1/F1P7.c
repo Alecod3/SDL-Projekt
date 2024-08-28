@@ -2,29 +2,29 @@
 
 int main(void)
 {
-    int a, b;
+    int amountLeft, amountOfBills;
 
     printf("Enter a dollar amount: ");
-    scanf("%d", &a);
+    scanf("%d", &amountLeft);
 
-    b = a / 20; 
-    printf("$20 bills: %d ", b);
-    a = a % 20;
+    amountOfBills = amountLeft / 20; 
+    printf("$20 bills: %d ", amountOfBills);
+    amountLeft = amountLeft % 20;
     printf("\n");
     
-    b = a / 10; 
-    printf("$10 bills: %d ", b);
-    a = a % 10;
+    amountOfBills = amountLeft / 10; 
+    printf("$10 bills: %d ", amountOfBills);
+    amountLeft = amountLeft % 10;
     printf("\n");
     
-    b = a / 5; 
-    printf("$5 bills: %d ", b);
-    a = a % 5;
+    amountOfBills = amountLeft / 5; 
+    printf("$5 bills: %d ", amountOfBills);
+    amountLeft = amountLeft % 5;
     printf("\n");
     
-    b = a / 1; 
-    printf("$1 bills: %d ", b);
-    a = a % 1;
+    amountOfBills = amountLeft / 1; 
+    printf("$1 bills: %d ", amountOfBills);
+    amountLeft = amountLeft % 1;
     printf("\n");
     
     return 0;
