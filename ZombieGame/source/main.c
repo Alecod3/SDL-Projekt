@@ -1,9 +1,11 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_main.h>
+#include <SDL2/SDL_image.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
+#include "powerups.h"
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
@@ -44,6 +46,13 @@ int SDL_main(int argc, char *argv[]) {
         return 1;
     }
 
+    if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG))
+    {
+        SDL_Log("SDL_image could not initialize! SDL_image Error: %s", IMG_GetError());
+        return 1;
+    }
+    
+
     SDL_Window *window = SDL_CreateWindow("Simple SDL2 Game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
     if (!window) {
         SDL_Log("Window could not be created! SDL_Error: %s", SDL_GetError());
@@ -59,12 +68,25 @@ int SDL_main(int argc, char *argv[]) {
         return 1;
     }
 
-    srand(time(NULL));
+    tex_extralife    = IMG_LoadTexture(renderer, "resources/extralife.png");
+    tex_extraspeed   = IMG_LoadTexture(renderer, "resources/extraspeed.png");
+    tex_doubledamage = IMG_LoadTexture(renderer, "resources/doubledamage.png");
+
+    if (!tex_extralife || !tex_extraspeed || !tex_doubledamage) {
+        SDL_Log("Failed to load powerup textures: %s", SDL_GetError());
+        return 1;
+    }
+
+    srand((unsigned int)time(NULL));
     SDL_Rect player = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, PLAYER_SIZE, PLAYER_SIZE};
     Bullet bullets[MAX_BULLETS] = {0};
     Mob mobs[MAX_MOBS];
     int score = 0;
     int lives = MAX_HEALTH;
+
+    int player_speed = PLAYER_SPEED;
+    int player_damage = 1;
+    Powerup powerups[MAX_POWERUPS];
 
     for (int i = 0; i < MAX_MOBS; i++) {
         do {
@@ -75,6 +97,22 @@ int SDL_main(int argc, char *argv[]) {
             mobs[i].active = true;
         } while (check_mob_collision(&mobs[i].rect, mobs, i));
     }
+
+    for (int i = 0; i < MAX_POWERUPS; i++)
+    {
+        PowerupType t = rand() % 3;
+        int x = rand() % (SCREEN_WIDTH - 30);
+        int y = rand() % (SCREEN_HEIGHT - 30);
+        powerups[i] = create_powerup(t, x, y);
+    }
+
+    for (int i = 0; i < MAX_POWERUPS; i++) {
+        PowerupType t = rand() % 3;
+        int x = rand() % (SCREEN_WIDTH - 30);
+        int y = rand() % (SCREEN_HEIGHT - 30);
+        powerups[i] = create_powerup(t, x, y);
+    }
+    
 
     bool running = true;
     SDL_Event event;
@@ -134,6 +172,12 @@ int SDL_main(int argc, char *argv[]) {
             }
         }
 
+        Uint32 now = SDL_GetTicks();
+        for (int i = 0; i < MAX_POWERUPS; i++) {
+            check_powerup_collision(&powerups[i], player, &lives, &player_speed, &player_damage, now);
+            update_powerup_effect(&powerups[i], &player_speed, &player_damage, now);
+        }
+
         // Rendering
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
@@ -155,6 +199,10 @@ int SDL_main(int argc, char *argv[]) {
             }
         }
 
+        for (int i = 0; i < MAX_POWERUPS; i++) {
+            draw_powerup(renderer, &powerups[i]);
+        }
+
         // Health bar rendering
         SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
         SDL_Rect healthBarBackground = {SCREEN_WIDTH - HEALTH_BAR_WIDTH - 10, 10, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT};
@@ -171,8 +219,13 @@ int SDL_main(int argc, char *argv[]) {
         SDL_Delay(16);
     }
 
+    SDL_DestroyTexture(tex_extralife);
+    SDL_DestroyTexture(tex_extraspeed);
+    SDL_DestroyTexture(tex_doubledamage);
+
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+    IMG_Quit();
     SDL_Quit();
     return 0;
 }
