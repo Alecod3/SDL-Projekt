@@ -36,7 +36,7 @@ void check_powerup_collision(Powerup* p, SDL_Rect player_rect, int* lives, int* 
                 (*lives)++;
                 break;
             case POWERUP_SPEED_BOOST:
-                *player_speed = PLAYER_SPEED * 2;  // Dubbla hastigheten
+                *player_speed = PLAYER_SPEED * 3;  // trippla hastigheten
                 break;
             case POWERUP_DOUBLE_DAMAGE:
                 *player_damage = (*player_damage) * 2; // Dubbla skadan
