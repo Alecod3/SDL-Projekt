@@ -1,7 +1,8 @@
 #ifndef POWERUPS_H
 #define POWERUPS_H
-#define PLAYER_SPEED 5
+#define PLAYER_SPEED 3
 #define DEFAULT_PLAYER_SPEED 5
+#define DEFAULT_PLAYER_DAMAGE 1
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
