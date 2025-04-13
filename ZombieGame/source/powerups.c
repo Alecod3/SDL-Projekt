@@ -33,7 +33,9 @@ void check_powerup_collision(Powerup* p, SDL_Rect player_rect, int* lives, int* 
     if (SDL_HasIntersection(&p->rect, &player_rect)) {
         switch (p->type) {
             case POWERUP_EXTRA_LIFE:
-                (*lives)++;
+            if(*lives < MAX_HEALTH){
+                (*lives)++;    
+            }
                 break;
             case POWERUP_SPEED_BOOST:
                 *player_speed = PLAYER_SPEED * 3;  // trippla hastigheten

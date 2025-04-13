@@ -3,6 +3,8 @@
 #define PLAYER_SPEED 3
 #define DEFAULT_PLAYER_SPEED 5
 #define DEFAULT_PLAYER_DAMAGE 1
+#define MAX_HEALTH 3
+#define MAX_POWERUPS 5
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
@@ -21,8 +23,6 @@ typedef struct {
     Uint32 pickup_time;
     Uint32 duration;
 } Powerup;
-
-#define MAX_POWERUPS 5
 
 // Funktioner
 Powerup create_powerup(PowerupType type, int x, int y);

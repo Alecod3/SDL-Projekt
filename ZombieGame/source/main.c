@@ -10,7 +10,6 @@
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
 #define PLAYER_SIZE 30
-// OBS: Vi använder nu variabeln player_speed, så vi tar inte med en fast PLAYER_SPEED här
 #define MOB_SIZE 30
 #define MOB_SPEED 2
 #define BULLET_SIZE 7
@@ -30,8 +29,8 @@ typedef struct {
 typedef struct {
     SDL_Rect rect;
     bool active;
-    int type;     // Typ 0–3, styr färg och liv
-    int health;   // 1 eller 2 beroende på typ
+    int type;    
+    int health;   
 } Mob;
 
 bool check_mob_collision(SDL_Rect *mob, Mob *mobs, int mob_index) {
