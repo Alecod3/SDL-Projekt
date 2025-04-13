@@ -19,6 +19,78 @@
 #define HEALTH_BAR_WIDTH 200
 #define HEALTH_BAR_HEIGHT 20
 
+int showMenu(SDL_Renderer *renderer, SDL_Window *window) {
+    SDL_Event event;
+    bool inMenu = true;
+    int selected = 0;
+    SDL_Rect buttons[3];
+
+    // Positionera knappar
+    for (int i = 0; i < 3; i++) {
+        buttons[i].x = SCREEN_WIDTH / 2 - 100;
+        buttons[i].y = 200 + i * 80;
+        buttons[i].w = 200;
+        buttons[i].h = 50;
+    }
+
+    while (inMenu) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                return -1;
+            } else if (event.type == SDL_KEYDOWN) {
+                switch (event.key.keysym.sym) {
+                    case SDLK_UP:
+                        selected = (selected + 2) % 3;
+                        break;
+                    case SDLK_DOWN:
+                        selected = (selected + 1) % 3;
+                        break;
+                    case SDLK_RETURN:
+                        return selected;
+                }
+            } else if (event.type == SDL_MOUSEMOTION) {
+                int mx = event.motion.x;
+                int my = event.motion.y;
+                for (int i = 0; i < 3; i++) {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h) {
+                        selected = i;
+                    }
+                }
+            } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+                if (event.button.button == SDL_BUTTON_LEFT) {
+                    int mx = event.button.x;
+                    int my = event.button.y;
+                    for (int i = 0; i < 3; i++) {
+                        if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                            my >= buttons[i].y && my <= buttons[i].y + buttons[i].h) {
+                            return i;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rendera meny
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        for (int i = 0; i < 3; i++) {
+            if (i == selected)
+                SDL_SetRenderDrawColor(renderer, 100, 100, 255, 255); // markerad
+            else
+                SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+
+            SDL_RenderFillRect(renderer, &buttons[i]);
+        }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+
+    return 0;
+}
+
 typedef struct {
     SDL_Rect rect;
     bool active;
@@ -58,6 +130,33 @@ int SDL_main(int argc, char *argv[]) {
         SDL_Quit();
         return 1;
     }
+
+    int menuResult = showMenu(renderer, window);
+if (menuResult == -1) {
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return 0; // Avsluta om användaren klickar stäng
+}
+
+if (menuResult == 1 || menuResult == 2) {
+    // Visa meddelande-ruta i fönstret
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+
+    SDL_Rect messageBox = {SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT / 2 - 40, 300, 80};
+    SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
+    SDL_RenderFillRect(renderer, &messageBox);
+
+    SDL_RenderPresent(renderer);
+    SDL_Delay(2000);
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return 0;
+}
+
 
     srand(time(NULL));
     SDL_Rect player = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, PLAYER_SIZE, PLAYER_SIZE};
