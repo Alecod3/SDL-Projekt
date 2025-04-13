@@ -2,6 +2,7 @@
 #define POWERUPS_H
 #define PLAYER_SPEED 5
 #define DEFAULT_PLAYER_SPEED 5
+#define BASE_PLAYER_SPEED 5
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>

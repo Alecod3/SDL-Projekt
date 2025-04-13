@@ -39,14 +39,10 @@ void check_powerup_collision(Powerup* p, SDL_Rect player_rect, int* lives, int* 
                 (*lives)++;
                 break;
             case POWERUP_SPEED_BOOST:
-                if (*player_speed == PLAYER_SPEED) {  // Skydda mot flera boostar
-                    (*player_speed) *= 2;
-                }
+                *player_speed = BASE_PLAYER_SPEED * 2;
                 break;
             case POWERUP_DOUBLE_DAMAGE:
-                if (*player_damage == 1) {
-                    (*player_damage) *= 2;
-                }
+                *player_damage = 2;
                 break;
         }
     }
@@ -61,14 +57,10 @@ void update_powerup_effect(Powerup* p, int* player_speed, int* player_damage, Ui
 
             switch (p->type) {
                 case POWERUP_SPEED_BOOST:
-                    if (*player_speed > PLAYER_SPEED) {
-                        *player_speed = PLAYER_SPEED;
-                    }
+                    *player_speed = BASE_PLAYER_SPEED;
                     break;
                 case POWERUP_DOUBLE_DAMAGE:
-                    if (*player_damage > 1) {
-                        *player_damage = 1;
-                    }
+                    *player_damage = 1;
                     break;
                 default:
                     break;
@@ -94,7 +86,7 @@ void draw_powerup(SDL_Renderer* renderer, Powerup* p) {
             break;
     }
 
-    if (tex != NULL) {
+    if (tex) {
         SDL_RenderCopy(renderer, tex, NULL, &p->rect);
     }
 }

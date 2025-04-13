@@ -125,10 +125,10 @@ int SDL_main(int argc, char *argv[]) {
         }
 
         const Uint8 *state = SDL_GetKeyboardState(NULL);
-        if (state[SDL_SCANCODE_UP] && player.y > 0) player.y -= PLAYER_SPEED;
-        if (state[SDL_SCANCODE_DOWN] && player.y + PLAYER_SIZE < SCREEN_HEIGHT) player.y += PLAYER_SPEED;
-        if (state[SDL_SCANCODE_LEFT] && player.x > 0) player.x -= PLAYER_SPEED;
-        if (state[SDL_SCANCODE_RIGHT] && player.x + PLAYER_SIZE < SCREEN_WIDTH) player.x += PLAYER_SPEED;
+        if (state[SDL_SCANCODE_UP] && player.y > 0) player.y -= player_speed;
+        if (state[SDL_SCANCODE_DOWN] && player.y + PLAYER_SIZE < SCREEN_HEIGHT) player.y += player_speed;
+        if (state[SDL_SCANCODE_LEFT] && player.x > 0) player.x -= player_speed;
+        if (state[SDL_SCANCODE_RIGHT] && player.x + PLAYER_SIZE < SCREEN_WIDTH) player.x += player_speed;
 
         if (state[SDL_SCANCODE_SPACE]) {
             for (int i = 0; i < MAX_BULLETS; i++) {
