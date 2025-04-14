@@ -91,8 +91,9 @@ int SDL_main(int argc, char *argv[]) {
     tex_extralife    = IMG_LoadTexture(renderer, "resources/extralife.png");
     tex_extraspeed   = IMG_LoadTexture(renderer, "resources/extraspeed.png");
     tex_doubledamage = IMG_LoadTexture(renderer, "resources/doubledamage.png");
+    tex_freezeenemies = IMG_LoadTexture(renderer, "resources/freezeenemies.png");
 
-    if (!tex_extralife || !tex_extraspeed || !tex_doubledamage) {
+    if (!tex_extralife || !tex_extraspeed || !tex_doubledamage || !tex_freezeenemies) {
         SDL_Log("Failed to load powerup textures: %s", SDL_GetError());
         return 1;
     }
@@ -111,11 +112,15 @@ int SDL_main(int argc, char *argv[]) {
     // Skapa powerups
     Powerup powerups[MAX_POWERUPS];
     for (int i = 0; i < MAX_POWERUPS; i++) {
-        PowerupType t = rand() % 3;
+        PowerupType t = rand() % 4;
         int x = rand() % (SCREEN_WIDTH - 30);
         int y = rand() % (SCREEN_HEIGHT - 30);
         powerups[i] = create_powerup(t, x, y);
     }
+
+    //Freeze variabler
+    bool freeze_active = false;
+    Uint32 freeze_timer = 0;
 
     // Skapa mobs
     for (int i = 0; i < MAX_MOBS; i++) {
@@ -177,6 +182,14 @@ int SDL_main(int argc, char *argv[]) {
             }
         }
 
+        // Kontrollera freeze tid
+        Uint32 now = SDL_GetTicks(); 
+
+        // Ta bort freeze efter 4 sekunder
+        if (freeze_active && now - freeze_timer >= 4000) {
+            freeze_active = false;
+        }
+
         // Uppdatera bullets
         for (int i = 0; i < MAX_BULLETS; i++) {
             if (bullets[i].active) {
@@ -207,6 +220,7 @@ int SDL_main(int argc, char *argv[]) {
         // Flytta mobs mot spelaren
         for (int i = 0; i < MAX_MOBS; i++) {
             if (mobs[i].active) {
+                if (freeze_active) continue;
                 SDL_Rect new_pos = mobs[i].rect;
                 if (player.x < mobs[i].rect.x)
                     new_pos.x -= MOB_SPEED;
@@ -226,10 +240,10 @@ int SDL_main(int argc, char *argv[]) {
         }
 
         // Hantera powerup-kollisioner och effekter
-        Uint32 now = SDL_GetTicks();
+        now = SDL_GetTicks();
         for (int i = 0; i < MAX_POWERUPS; i++) {
-            check_powerup_collision(&powerups[i], player, &lives, &player_speed, &player_damage, now);
-            update_powerup_effect(&powerups[i], &player_speed, &player_damage, now);
+            check_powerup_collision(&powerups[i], player, &lives, &player_speed, &player_damage, &freeze_active, &freeze_timer, now);
+            update_powerup_effect(&powerups[i], &player_speed, &player_damage, &freeze_active, &freeze_timer, now);
         }
 
         // Rendera allt

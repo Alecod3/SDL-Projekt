@@ -5,6 +5,7 @@
 SDL_Texture* tex_extralife = NULL;
 SDL_Texture* tex_extraspeed = NULL;
 SDL_Texture* tex_doubledamage = NULL;
+SDL_Texture* tex_freezeenemies = NULL;
 
 // Skapar en ny powerup med position och typ
 Powerup create_powerup(PowerupType type, int x, int y) {
@@ -18,7 +19,7 @@ Powerup create_powerup(PowerupType type, int x, int y) {
     p.picked_up = false;
     p.pickup_time = 0;
     // Sätter duration (10 sekunder) för powerups som har tidsbegränsad effekt
-    if (type == POWERUP_SPEED_BOOST || type == POWERUP_DOUBLE_DAMAGE) {
+    if (type == POWERUP_SPEED_BOOST || type == POWERUP_DOUBLE_DAMAGE || type == POWERUP_FREEZE_ENEMIES) {
         p.duration = 10000; // 10 sekunder i millisekunder
     } else {
         p.duration = 0; // Ingen duration för extra life
@@ -26,7 +27,7 @@ Powerup create_powerup(PowerupType type, int x, int y) {
     return p;
 }
 
-void check_powerup_collision(Powerup* p, SDL_Rect player_rect, int* lives, int* player_speed, int* player_damage, Uint32 current_time) {
+void check_powerup_collision(Powerup* p, SDL_Rect player_rect, int* lives, int* player_speed, int* player_damage, bool* freeze_active, Uint32* freeze_timer, Uint32 current_time) {
     // Om powerup:en är inaktiv eller redan plockad, gör inget
     if (!p->active || p->picked_up) return;
 
@@ -43,6 +44,10 @@ void check_powerup_collision(Powerup* p, SDL_Rect player_rect, int* lives, int* 
             case POWERUP_DOUBLE_DAMAGE:
                 *player_damage = (*player_damage) * 2; // Dubbla skadan
                 break;
+            case POWERUP_FREEZE_ENEMIES:
+                *freeze_active = true;
+                *freeze_timer = current_time;
+                break;
         }
         // Markera att powerup:en plockats upp och gör den inaktiv så att den inte triggar om sig
         p->picked_up = true;
@@ -51,7 +56,7 @@ void check_powerup_collision(Powerup* p, SDL_Rect player_rect, int* lives, int* 
     }
 }
 
-void update_powerup_effect(Powerup* p, int* player_speed, int* player_damage, Uint32 current_time) {
+void update_powerup_effect(Powerup* p, int* player_speed, int* player_damage, bool* freeze_active, Uint32* freeze_timer, Uint32 current_time) {
     // Om ingen powerup-effekt är aktiv, returnera
     if (!p->picked_up) return;
 
@@ -63,6 +68,9 @@ void update_powerup_effect(Powerup* p, int* player_speed, int* player_damage, Ui
                 break;
             case POWERUP_DOUBLE_DAMAGE:
                 *player_damage = DEFAULT_PLAYER_DAMAGE;
+                break;
+            case POWERUP_FREEZE_ENEMIES:
+                *freeze_active = false;
                 break;
             default:
                 break;
@@ -87,6 +95,9 @@ void draw_powerup(SDL_Renderer* renderer, Powerup* p) {
             break;
         case POWERUP_DOUBLE_DAMAGE:
             texture = tex_doubledamage;
+            break;
+        case POWERUP_FREEZE_ENEMIES:
+            texture = tex_freezeenemies;
             break;
     }
 
