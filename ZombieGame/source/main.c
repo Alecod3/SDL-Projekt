@@ -134,8 +134,6 @@ int SDL_main(int argc, char *argv[]) {
     SDL_Event event;
     static bool spacePressed = false;
 
-    ActiveEffects effects = { false, 0, false, 0 };
-
     while (running) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
@@ -229,46 +227,10 @@ int SDL_main(int argc, char *argv[]) {
 
         // Hantera powerup-kollisioner och effekter
         Uint32 now = SDL_GetTicks();
-        static Uint32 last_mob_spawn_time = 0;
-        static Uint32 last_powerup_spawn_time = 0;
-
-        // Spawn mobs varje 1,5 sekunder
-        if (now - last_mob_spawn_time >= 1500) {
-            for (int i = 0; i < MAX_MOBS; i++) {
-                if (!mobs[i].active) {
-                    do {
-                        mobs[i].rect.x = rand() % (SCREEN_WIDTH - MOB_SIZE);
-                        mobs[i].rect.y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
-                        mobs[i].rect.w = MOB_SIZE;
-                        mobs[i].rect.h = MOB_SIZE;
-                        mobs[i].active = true;
-                        mobs[i].type = rand() % 4;
-                        mobs[i].health = (mobs[i].type == 3) ? 2 : 1;
-                    } while (check_mob_collision(&mobs[i].rect, mobs, i));
-                    break; // Spawn en mob åt gången
-                }
-            }
-            last_mob_spawn_time = now;
-        }
-
-        // Spawn powerup varje 5 sekunder
-        if (now - last_powerup_spawn_time >= 5000) {
-            for (int i = 0; i < MAX_POWERUPS; i++) {
-                if (!powerups[i].active) {
-                    PowerupType t = rand() % 3;
-                    int x = rand() % (SCREEN_WIDTH - 30);
-                    int y = rand() % (SCREEN_HEIGHT - 30);
-                    powerups[i] = create_powerup(t, x, y);
-                    break; // Spawn en powerup åt gången
-                }
-            }
-            last_powerup_spawn_time = now;
-        }
-                
         for (int i = 0; i < MAX_POWERUPS; i++) {
-            check_powerup_collision(&powerups[i], player, &lives, &player_speed, &player_damage, now, &effects);
+            check_powerup_collision(&powerups[i], player, &lives, &player_speed, &player_damage, now);
+            update_powerup_effect(&powerups[i], &player_speed, &player_damage, now);
         }
-        update_effects(&effects, &player_speed, &player_damage, now);
 
         // Rendera allt
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
