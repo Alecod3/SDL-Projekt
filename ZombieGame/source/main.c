@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_main.h>
+#include <SDL2/SDL_ttf.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
@@ -24,11 +25,24 @@ int showMenu(SDL_Renderer *renderer, SDL_Window *window) {
     bool inMenu = true;
     int selected = 0;
     SDL_Rect buttons[3];
+    const char* labels[3] = {"Single Player", "Multiplayer", "Settings"};
+
+    // Initiera font
+    TTF_Font* font = TTF_OpenFont("shlop.ttf", 28);
+    if (!font) {
+        SDL_Log("Failed to load font: %s", TTF_GetError());
+        return -1;
+    }
+
+    TTF_Font* titleFont = TTF_OpenFont("simbiot.ttf", 64);
+if (!titleFont) {
+    SDL_Log("Failed to load title font: %s", TTF_GetError());
+}
 
     // Positionera knappar
     for (int i = 0; i < 3; i++) {
         buttons[i].x = SCREEN_WIDTH / 2 - 100;
-        buttons[i].y = 200 + i * 80;
+        buttons[i].y = 250 + i * 80;
         buttons[i].w = 200;
         buttons[i].h = 50;
     }
@@ -36,6 +50,7 @@ int showMenu(SDL_Renderer *renderer, SDL_Window *window) {
     while (inMenu) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
+                TTF_CloseFont(font);
                 return -1;
             } else if (event.type == SDL_KEYDOWN) {
                 switch (event.key.keysym.sym) {
@@ -46,6 +61,7 @@ int showMenu(SDL_Renderer *renderer, SDL_Window *window) {
                         selected = (selected + 1) % 3;
                         break;
                     case SDLK_RETURN:
+                        TTF_CloseFont(font);
                         return selected;
                 }
             } else if (event.type == SDL_MOUSEMOTION) {
@@ -64,6 +80,7 @@ int showMenu(SDL_Renderer *renderer, SDL_Window *window) {
                     for (int i = 0; i < 3; i++) {
                         if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
                             my >= buttons[i].y && my <= buttons[i].y + buttons[i].h) {
+                            TTF_CloseFont(font);
                             return i;
                         }
                     }
@@ -75,19 +92,53 @@ int showMenu(SDL_Renderer *renderer, SDL_Window *window) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
+         // 🔺 Rendera rubriken högst upp
+         if (titleFont) {
+            SDL_Color red = {200, 0, 0};
+            SDL_Surface* titleSurface = TTF_RenderText_Blended(titleFont, "Zombie Game", red);
+            SDL_Texture* titleTexture = SDL_CreateTextureFromSurface(renderer, titleSurface);
+
+            SDL_Rect titleRect = {
+                SCREEN_WIDTH / 2 - titleSurface->w / 2,
+                60, // Höjd från toppen
+                titleSurface->w,
+                titleSurface->h
+            };
+
+            SDL_RenderCopy(renderer, titleTexture, NULL, &titleRect);
+            SDL_FreeSurface(titleSurface);
+            SDL_DestroyTexture(titleTexture);
+        }
+
         for (int i = 0; i < 3; i++) {
             if (i == selected)
-                SDL_SetRenderDrawColor(renderer, 100, 100, 255, 255); // markerad
+                SDL_SetRenderDrawColor(renderer, 180, 0, 0, 255);
             else
-                SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+                SDL_SetRenderDrawColor(renderer, 90, 0, 0, 255);
 
             SDL_RenderFillRect(renderer, &buttons[i]);
+
+            // Rendera text
+            SDL_Color color = {255, 255, 255};
+            SDL_Surface* surface = TTF_RenderText_Blended(font, labels[i], color);
+            SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_Rect textRect = {
+                buttons[i].x + (buttons[i].w - surface->w) / 2,
+                buttons[i].y + (buttons[i].h - surface->h) / 2,
+                surface->w,
+                surface->h
+            };
+            SDL_RenderCopy(renderer, texture, NULL, &textRect);
+            SDL_FreeSurface(surface);
+            SDL_DestroyTexture(texture);
         }
 
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
 
+    TTF_CloseFont(titleFont);
+    TTF_CloseFont(font);
     return 0;
 }
 
@@ -110,9 +161,111 @@ bool check_mob_collision(SDL_Rect *mob, Mob *mobs, int mob_index) {
     return false;
 }
 
+int showGameOver(SDL_Renderer *renderer) {
+    SDL_Event event;
+    bool inGameOver = true;
+    int selected = 0;
+    SDL_Rect buttons[3];
+    const char* labels[3] = {"Play Again", "Main Menu", "Exit Game"};
+
+    TTF_Font* optionFont = TTF_OpenFont("shlop.ttf", 28);
+    TTF_Font* titleFont = TTF_OpenFont("simbiot.ttf", 64);
+
+    if (!optionFont || !titleFont) {
+        SDL_Log("Failed to load Game Over fonts: %s", TTF_GetError());
+        if (optionFont) TTF_CloseFont(optionFont);
+        if (titleFont)  TTF_CloseFont(titleFont);
+    
+        return 2;
+    }
+
+    for (int i = 0; i < 3; i++) {
+        buttons[i].x = SCREEN_WIDTH / 2 - 100;
+        buttons[i].y = 250 + i * 80;
+        buttons[i].w = 200;
+        buttons[i].h = 50;
+    }
+
+    while (inGameOver) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) return 2;
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_UP) selected = (selected + 2) % 3;
+                if (event.key.keysym.sym == SDLK_DOWN) selected = (selected + 1) % 3;
+                if (event.key.keysym.sym == SDLK_RETURN) return selected;
+            }
+            if (event.type == SDL_MOUSEMOTION) {
+                int mx = event.motion.x, my = event.motion.y;
+                for (int i = 0; i < 3; i++) {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h) {
+                        selected = i;
+                    }
+                }
+            }
+            if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
+                int mx = event.button.x, my = event.button.y;
+                for (int i = 0; i < 3; i++) {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h) {
+                        return i;
+                    }
+                }
+            }
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        if (titleFont) {
+            SDL_Color red = {200, 0, 0};
+            SDL_Surface* titleSurface = TTF_RenderText_Blended(titleFont, "GAME OVER", red);
+            SDL_Texture* titleTexture = SDL_CreateTextureFromSurface(renderer, titleSurface);
+            SDL_Rect titleRect = { SCREEN_WIDTH / 2 - titleSurface->w / 2, 60, titleSurface->w, titleSurface->h };
+            SDL_RenderCopy(renderer, titleTexture, NULL, &titleRect);
+            SDL_FreeSurface(titleSurface);
+            SDL_DestroyTexture(titleTexture);
+        }
+
+        for (int i = 0; i < 3; i++) {
+            if (i == selected) SDL_SetRenderDrawColor(renderer, 180, 0, 0, 255);
+            else SDL_SetRenderDrawColor(renderer, 90, 0, 0, 255);
+            SDL_RenderFillRect(renderer, &buttons[i]);
+
+            SDL_Color color = {255, 255, 255};
+            SDL_Surface* surface = TTF_RenderText_Blended(optionFont, labels[i], color);
+            SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_Rect textRect = {
+                buttons[i].x + (buttons[i].w - surface->w) / 2,
+                buttons[i].y + (buttons[i].h - surface->h) / 2,
+                surface->w,
+                surface->h
+            };
+            SDL_RenderCopy(renderer, texture, NULL, &textRect);
+            SDL_FreeSurface(surface);
+            SDL_DestroyTexture(texture);
+        }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+
+    TTF_CloseFont(titleFont);
+    TTF_CloseFont(optionFont);
+    return 0;
+}
+
+bool skipMenu = false;
+
 int SDL_main(int argc, char *argv[]) {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         SDL_Log("SDL could not initialize! SDL_Error: %s", SDL_GetError());
+        return 1;
+    }
+
+    if (TTF_Init() == -1) {
+        SDL_Log("SDL_ttf init error: %s", TTF_GetError());
+        SDL_Quit();
         return 1;
     }
 
@@ -131,33 +284,17 @@ int SDL_main(int argc, char *argv[]) {
         return 1;
     }
 
-    int menuResult = showMenu(renderer, window);
-if (menuResult == -1) {
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    return 0; // Avsluta om användaren klickar stäng
-}
-
-if (menuResult == 1 || menuResult == 2) {
-    // Visa meddelande-ruta i fönstret
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-
-    SDL_Rect messageBox = {SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT / 2 - 40, 300, 80};
-    SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
-    SDL_RenderFillRect(renderer, &messageBox);
-
-    SDL_RenderPresent(renderer);
-    SDL_Delay(2000);
-
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    return 0;
-}
-
-
+    if (!skipMenu) {
+        int menuResult = showMenu(renderer, window);
+        if (menuResult == -1 || menuResult == 1 || menuResult == 2) {
+            SDL_DestroyRenderer(renderer);
+            SDL_DestroyWindow(window);
+            TTF_Quit();
+            SDL_Quit();
+            return 0;
+        }
+    }
+    
     srand(time(NULL));
     SDL_Rect player = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, PLAYER_SIZE, PLAYER_SIZE};
     Bullet bullets[MAX_BULLETS] = {0};
@@ -208,8 +345,27 @@ if (menuResult == 1 || menuResult == 2) {
             if (mobs[i].active && SDL_HasIntersection(&player, &mobs[i].rect)) {
                 lives--;
                 mobs[i].active = false;
-                if (lives <= 0) running = false;
-            }
+                if (lives <= 0) {
+                running = false;
+
+                int result = showGameOver(renderer);
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    TTF_Quit();
+    SDL_Quit();
+
+    if (result == 0) {
+        skipMenu = true;           // ⬅ Skippa menyn
+        return SDL_main(0, NULL);
+    } else if (result == 1) {
+        skipMenu = false;          // ⬅ Visa menyn igen
+        return SDL_main(0, NULL);
+    } else {
+        return 0;
+    }
+}
+         }
         }
 
         for (int i = 0; i < MAX_BULLETS; i++) {
@@ -272,6 +428,7 @@ if (menuResult == 1 || menuResult == 2) {
 
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+    TTF_Quit();
     SDL_Quit();
     return 0;
 }
