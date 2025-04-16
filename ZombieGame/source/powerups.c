@@ -70,7 +70,7 @@ void update_powerup_effect(Powerup* p, int* player_speed, int* player_damage, bo
                 *player_damage = DEFAULT_PLAYER_DAMAGE;
                 break;
             case POWERUP_FREEZE_ENEMIES:
-                *freeze_active = false;
+                //*freeze_active = false;
                 break;
             default:
                 break;

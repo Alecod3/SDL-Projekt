@@ -119,7 +119,7 @@ int SDL_main(int argc, char *argv[]) {
     }
 
     //Freeze variabler
-    bool freeze_active = false;
+    //bool freeze_active = false;
     Uint32 freeze_timer = 0;
 
     // Skapa mobs
@@ -186,9 +186,9 @@ int SDL_main(int argc, char *argv[]) {
         Uint32 now = SDL_GetTicks(); 
 
         // Ta bort freeze efter 4 sekunder
-        if (freeze_active && now - freeze_timer >= 4000) {
-            freeze_active = false;
-        }
+        // if (freeze_active && now - freeze_timer >= 4000) {
+        //     freeze_active = false;
+        // }
 
         // Uppdatera bullets
         for (int i = 0; i < MAX_BULLETS; i++) {
@@ -222,6 +222,18 @@ int SDL_main(int argc, char *argv[]) {
                         bullets[i].active = false;
                         break;
                     }
+                }
+            }
+        }
+
+        // Kontrollera om någon freeze är aktiv
+        bool freeze_active = false;
+        for (int i = 0; i < MAX_POWERUPS; i++) {
+            if (powerups[i].picked_up && powerups[i].type == POWERUP_FREEZE_ENEMIES) {
+                Uint32 elapsed = now - powerups[i].pickup_time;
+                if (elapsed < powerups[i].duration) {
+                    freeze_active = true;
+                    break;
                 }
             }
         }
