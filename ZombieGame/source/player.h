@@ -1,7 +1,7 @@
 #ifndef PLAYER_H
 #define PLAYER_H
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 
 // Definiera konstanter om de inte redan finns globalt
 #define SCREEN_WIDTH 800

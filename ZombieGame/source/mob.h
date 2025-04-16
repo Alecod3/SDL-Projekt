@@ -1,7 +1,7 @@
 #ifndef MOB_H
 #define MOB_H
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 #include <stdbool.h>
 
 // Definiera konstanter
