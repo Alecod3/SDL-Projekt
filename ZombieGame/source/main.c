@@ -209,6 +209,15 @@ int SDL_main(int argc, char *argv[]) {
                         if (mobs[j].health <= 0) {
                             mobs[j].active = false;
                             score += 100;
+                            if (rand() % 4 == 0) { // 25% chans att en mob släpper en powerup vid död
+                                for (int k = 0; k < MAX_POWERUPS; k++) {
+                                    if (!powerups[k].active && !powerups[k].picked_up) {
+                                        PowerupType t = rand() % 4;
+                                        powerups[k] = create_powerup(t, mobs[j].rect.x, mobs[j].rect.y);
+                                        break;
+                                    }
+                                }
+                            }
                         }
                         bullets[i].active = false;
                         break;
