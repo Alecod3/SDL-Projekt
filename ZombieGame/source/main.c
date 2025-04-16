@@ -11,7 +11,7 @@
 #define SCREEN_HEIGHT 600
 #define PLAYER_SIZE 30
 #define MOB_SIZE 30
-#define MOB_SPEED 2
+#define MOB_SPEED 3
 #define BULLET_SIZE 7
 #define BULLET_SPEED 7
 #define MAX_BULLETS 10
@@ -209,20 +209,47 @@ int SDL_main(int argc, char *argv[]) {
         // Flytta mobs mot spelaren
         for (int i = 0; i < MAX_MOBS; i++) {
             if (mobs[i].active) {
-                SDL_Rect new_pos = mobs[i].rect;
-                if (player.x < mobs[i].rect.x)
-                    new_pos.x -= MOB_SPEED;
-                if (player.x > mobs[i].rect.x)
-                    new_pos.x += MOB_SPEED;
-                if (player.y < mobs[i].rect.y)
-                    new_pos.y -= MOB_SPEED;
-                if (player.y > mobs[i].rect.y)
-                    new_pos.y += MOB_SPEED;
+                float dx = player.x - mobs[i].rect.x;
+                float dy = player.y - mobs[i].rect.y;
+                float length = SDL_sqrtf(dx * dx + dy * dy);
 
-                if (!check_mob_collision(&new_pos, mobs, i) &&
-                    new_pos.x >= 0 && new_pos.x + MOB_SIZE <= SCREEN_WIDTH &&
-                    new_pos.y >= 0 && new_pos.y + MOB_SIZE <= SCREEN_HEIGHT) {
-                    mobs[i].rect = new_pos;
+                if (length != 0) {
+                    // Normalisera
+                    dx /= length;
+                    dy /= length;
+
+                    // Lägg till slumpmässig variation
+                    float offset_x = ((rand() % 100) - 50) / 100.0f * 0.3f;
+                    float offset_y = ((rand() % 100) - 50) / 100.0f * 0.3f;
+
+                    dx += offset_x;
+                    dy += offset_y;
+
+                    // Normalisera igen efter slump
+                    length = SDL_sqrtf(dx * dx + dy * dy);
+                    dx /= length;
+                    dy /= length;
+
+                    SDL_Rect new_pos = mobs[i].rect;
+                    new_pos.x += (int)(dx * MOB_SPEED);
+                    new_pos.y += (int)(dy * MOB_SPEED);
+
+                    if (!check_mob_collision(&new_pos, mobs, i) &&
+                        new_pos.x >= 0 && new_pos.x + MOB_SIZE <= SCREEN_WIDTH &&
+                        new_pos.y >= 0 && new_pos.y + MOB_SIZE <= SCREEN_HEIGHT) {
+                        mobs[i].rect = new_pos;
+                    } else {
+                        // Alternativ liten slumpmässig rörelse om blockad
+                        SDL_Rect alt_pos = mobs[i].rect;
+                        alt_pos.x += (rand() % 3 - 1) * MOB_SPEED;
+                        alt_pos.y += (rand() % 3 - 1) * MOB_SPEED;
+
+                        if (!check_mob_collision(&alt_pos, mobs, i) &&
+                            alt_pos.x >= 0 && alt_pos.x + MOB_SIZE <= SCREEN_WIDTH &&
+                            alt_pos.y >= 0 && alt_pos.y + MOB_SIZE <= SCREEN_HEIGHT) {
+                            mobs[i].rect = alt_pos;
+                        }
+                    }
                 }
             }
         }
