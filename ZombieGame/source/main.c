@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
+#include <math.h>
 #include "powerups.h"
 
 #define SCREEN_WIDTH 800
@@ -148,16 +149,27 @@ int SDL_main(int argc, char *argv[]) {
             }
         }
 
-        // Använd player_speed-variabeln för att hantera spelarrörelser
         const Uint8 *state = SDL_GetKeyboardState(NULL);
+        int dx = 0, dy = 0;
+
         if ((state[SDL_SCANCODE_UP] || state[SDL_SCANCODE_W]) && player.y > 0)
-            player.y -= player_speed;
+            dy = -1;
         if ((state[SDL_SCANCODE_DOWN] || state[SDL_SCANCODE_S]) && player.y + PLAYER_SIZE < SCREEN_HEIGHT)
-            player.y += player_speed;
+            dy = 1;
         if ((state[SDL_SCANCODE_LEFT] || state[SDL_SCANCODE_A]) && player.x > 0)
-            player.x -= player_speed;
+            dx = -1;
         if ((state[SDL_SCANCODE_RIGHT] || state[SDL_SCANCODE_D]) && player.x + PLAYER_SIZE < SCREEN_WIDTH)
-            player.x += player_speed;
+            dx = 1;
+
+        // Normalisera rörelsen så att hastigheten blir densamma oavsett riktning
+        float magnitude = sqrtf(dx * dx + dy * dy);
+        if (magnitude != 0) {
+            float norm_dx = (dx / magnitude) * player_speed;
+            float norm_dy = (dy / magnitude) * player_speed;
+    
+            player.x += (int)norm_dx;
+            player.y += (int)norm_dy;
+        }
 
         if (state[SDL_SCANCODE_SPACE]) {
             if (!spacePressed) {
