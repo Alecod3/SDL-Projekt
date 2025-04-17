@@ -30,6 +30,8 @@
 
 bool skipMenu = false;
 
+int showSettings(SDL_Renderer *renderer, SDL_Window *window);
+
 // Bullet-ADT (här hålls den enkelt i main, men den kan även brytas ut)
 typedef struct {
     SDL_Rect rect;
@@ -60,7 +62,13 @@ int showMenu(SDL_Renderer *renderer, SDL_Window *window) {
             if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.sym == SDLK_UP) selected = (selected + 2) % 3;
                 if (event.key.keysym.sym == SDLK_DOWN) selected = (selected + 1) % 3;
-                if (event.key.keysym.sym == SDLK_RETURN) return selected;
+                if (event.key.keysym.sym == SDLK_RETURN) {
+                    if (selected == 2) { // Settings
+                        showSettings(renderer, window);
+                    } else {
+                        return selected;
+                    }
+                }
             }
             if (event.type == SDL_MOUSEMOTION) {
                 int mx = event.motion.x, my = event.motion.y;
@@ -115,6 +123,56 @@ int showMenu(SDL_Renderer *renderer, SDL_Window *window) {
 
     TTF_CloseFont(titleFont);
     TTF_CloseFont(font);
+    return 0;
+}
+
+int showSettings(SDL_Renderer *renderer, SDL_Window *window) {
+    SDL_Event event;
+    bool inSettings = true;
+    TTF_Font* font = TTF_OpenFont("shlop.ttf", 28);
+    TTF_Font* titleFont = TTF_OpenFont("simbiot.ttf", 48);
+
+    if (!font || !titleFont) {
+        SDL_Log("Misslyckades med att ladda font i inställningsmeny: %s", TTF_GetError());
+        return 0;
+    }
+
+    while (inSettings) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) return -1;
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_RETURN) {
+                    inSettings = false;  // Gå tillbaka till menyn
+                }
+            }
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        // --- Rubrik: Settings ---
+        SDL_Color white = {255, 255, 255};
+        SDL_Surface* titleSurface = TTF_RenderText_Blended(titleFont, "Settings", white);
+        SDL_Texture* titleTexture = SDL_CreateTextureFromSurface(renderer, titleSurface);
+        SDL_Rect titleRect = { SCREEN_WIDTH / 2 - titleSurface->w / 2, 50, titleSurface->w, titleSurface->h };
+        SDL_RenderCopy(renderer, titleTexture, NULL, &titleRect);
+        SDL_FreeSurface(titleSurface);
+        SDL_DestroyTexture(titleTexture);
+
+        // --- Volym-rubrik till vänster ---
+        SDL_Surface* volumeSurface = TTF_RenderText_Blended(font, "Volume", white);
+        SDL_Texture* volumeTexture = SDL_CreateTextureFromSurface(renderer, volumeSurface);
+        SDL_Rect volumeRect = { 100, 180, volumeSurface->w, volumeSurface->h };
+        SDL_RenderCopy(renderer, volumeTexture, NULL, &volumeRect);
+        SDL_FreeSurface(volumeSurface);
+        SDL_DestroyTexture(volumeTexture);
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+
+    TTF_CloseFont(font);
+    TTF_CloseFont(titleFont);
     return 0;
 }
 
