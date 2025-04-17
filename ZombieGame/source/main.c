@@ -293,7 +293,19 @@ int SDL_main(int argc, char *argv[]) {
                 SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
                 SDL_RenderFillRect(renderer, &bar_bg);
 
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                // Sätt färg beroende på powerup
+                switch (powerups[i].type) {
+                    case POWERUP_SPEED_BOOST:
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Gul
+                        break;
+                    case POWERUP_DOUBLE_DAMAGE:
+                        SDL_SetRenderDrawColor(renderer, 128, 128, 128, 255); // Grå
+                        break;
+                    case POWERUP_FREEZE_ENEMIES:
+                        SDL_SetRenderDrawColor(renderer, 0, 128, 255, 255); // Blå
+                        break;
+                }
+
                 SDL_RenderFillRect(renderer, &bar_fg);
                 bar_y_offset += bar_height + 2;
             }
