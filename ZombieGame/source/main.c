@@ -66,6 +66,8 @@ int main(int argc, char *argv[]) {
     tex_extralife    = IMG_LoadTexture(renderer, "resources/extralife.png");
     tex_extraspeed   = IMG_LoadTexture(renderer, "resources/extraspeed.png");
     tex_doubledamage = IMG_LoadTexture(renderer, "resources/doubledamage.png");
+    tex_freezeenemies = IMG_LoadTexture(renderer, "resources/freezeenemies.png");
+
     if (!tex_extralife || !tex_extraspeed || !tex_doubledamage) {
         SDL_Log("Kunde inte ladda in powerup-texturer: %s", SDL_GetError());
         SDL_DestroyRenderer(renderer);
@@ -95,13 +97,16 @@ int main(int argc, char *argv[]) {
     
     Powerup powerups[MAX_POWERUPS];
     for (int i = 0; i < MAX_POWERUPS; i++) {
-        PowerupType t = rand() % 3;
+        PowerupType t = rand() % 4;
         int x = rand() % (SCREEN_WIDTH - 32);
         int y = rand() % (SCREEN_HEIGHT - 32);
         powerups[i] = create_powerup(t, x, y);
     }
     
     int score = 0;
+
+    Uint32 freeze_timer = 0;
+
     bool running = true;
     SDL_Event event;
     bool spacePressed = false;
@@ -193,6 +198,15 @@ int main(int argc, char *argv[]) {
                         if (mobs[j].health <= 0) {
                             mobs[j].active = false;
                             score += 100;
+                            if (rand() % 4 == 0) { // 25% chans att en mob släpper en powerup vid död
+                                for (int k = 0; k < MAX_POWERUPS; k++) {
+                                    if (!powerups[k].active && !powerups[k].picked_up) {
+                                        PowerupType t = rand() % 4;
+                                        powerups[k] = create_powerup(t, mobs[j].rect.x, mobs[j].rect.y);
+                                        break;
+                                    }
+                                }
+                            }
                         }
                         bullets[i].active = false;
                         break;
@@ -200,11 +214,24 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
-        
-        // Uppdatera mobs så att de rör sig mot spelaren
+        // Kontrollera om någon freeze är aktiv
+        bool freeze_active = false;
+        for (int i = 0; i < MAX_POWERUPS; i++) {
+            if (powerups[i].picked_up && powerups[i].type == POWERUP_FREEZE_ENEMIES) {
+                Uint32 elapsed = now - powerups[i].pickup_time;
+                if (elapsed < powerups[i].duration) {
+                    freeze_active = true;
+                    break;
+                }
+            }
+        }
+
+        // Uppdatera mobs så att de rör sig mot spelaren (om de inte är frysta)
         for (int i = 0; i < MAX_MOBS; i++) {
             if (mobs[i].active) {
-                update_mob(&mobs[i], player.rect);
+                if (!freeze_active) {
+                    update_mob(&mobs[i], player.rect);
+                }
             }
         }
         
@@ -252,6 +279,7 @@ int main(int argc, char *argv[]) {
         SDL_RenderClear(renderer);
         
         draw_player(renderer, &player);
+        draw_powerup_bars(renderer, &player, powerups, now);
         for (int i = 0; i < MAX_MOBS; i++) {
             if (mobs[i].active) {
                 draw_mob(renderer, &mobs[i]);

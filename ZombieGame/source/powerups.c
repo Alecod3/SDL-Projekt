@@ -5,6 +5,7 @@
 SDL_Texture* tex_extralife = NULL;
 SDL_Texture* tex_extraspeed = NULL;
 SDL_Texture* tex_doubledamage = NULL;
+SDL_Texture* tex_freezeenemies = NULL;
 
 // Skapar en ny powerup med position och typ
 Powerup create_powerup(PowerupType type, int x, int y) {
@@ -23,6 +24,8 @@ Powerup create_powerup(PowerupType type, int x, int y) {
         p.duration = 6000; // 6 sekunder i millisekunder
     } else if (POWERUP_EXTRA_LIFE) {
         p.duration = 0;
+    } else if (type == POWERUP_FREEZE_ENEMIES) {
+        p.duration = 3000; // 3 sekunder i millisekunder
     }
     return p;
 }
@@ -48,6 +51,10 @@ void check_powerup_collision(Powerup* p, SDL_Rect player, int* lives, int* playe
                 effects->damage_active = true;
                 effects->damage_start_time = current_time;
                 break;
+            case POWERUP_FREEZE_ENEMIES:
+                effects->freeze_active = true;
+                effects->freeze_start_time = current_time;
+                break;
         }
     }
 }
@@ -61,6 +68,10 @@ void update_effects(ActiveEffects* effects, int* player_speed, int* player_damag
     if (effects->damage_active && current_time - effects->damage_start_time >= 3000) {
         *player_damage = DEFAULT_PLAYER_DAMAGE;
         effects->damage_active = false;
+    }
+
+    if (effects->freeze_active && current_time - effects->freeze_start_time >= 3000) {
+        effects->freeze_active = false;
     }
 }
 
@@ -112,6 +123,9 @@ void draw_powerup(SDL_Renderer* renderer, Powerup* p) {
             break;
         case POWERUP_DOUBLE_DAMAGE:
             texture = tex_doubledamage;
+            break;
+        case POWERUP_FREEZE_ENEMIES:
+            texture = tex_freezeenemies;
             break;
     }
 

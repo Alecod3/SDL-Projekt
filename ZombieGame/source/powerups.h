@@ -11,7 +11,8 @@
 typedef enum {
     POWERUP_EXTRA_LIFE,
     POWERUP_SPEED_BOOST,
-    POWERUP_DOUBLE_DAMAGE
+    POWERUP_DOUBLE_DAMAGE,
+    POWERUP_FREEZE_ENEMIES
 } PowerupType;
 
 typedef struct {
@@ -19,6 +20,8 @@ typedef struct {
     Uint32 speed_start_time;
     bool damage_active;
     Uint32 damage_start_time;
+    bool freeze_active;
+    Uint32 freeze_start_time;
 } ActiveEffects;
 
 typedef struct {
@@ -32,7 +35,7 @@ typedef struct {
 
 // Funktioner
 Powerup create_powerup(PowerupType type, int x, int y);
-void check_powerup_collision(Powerup* p, SDL_Rect player_rect, int* lives, int* player_speed, int* player_damage, Uint32 current_time, ActiveEffects* effects);
+void check_powerup_collision(Powerup* p, SDL_Rect player, int* lives, int* player_speed, int* player_damage, Uint32 current_time, ActiveEffects* effects);
 void update_powerup_effect(Powerup* powerups, int index, int* player_speed, int* player_damage, Uint32 current_time);
 void draw_powerup(SDL_Renderer* renderer, Powerup* p);
 void update_effects(ActiveEffects* effects, int* player_speed, int* player_damage, Uint32 current_time);
@@ -40,5 +43,6 @@ void update_effects(ActiveEffects* effects, int* player_speed, int* player_damag
 extern SDL_Texture* tex_extralife;
 extern SDL_Texture* tex_extraspeed;
 extern SDL_Texture* tex_doubledamage;
+extern SDL_Texture* tex_freezeenemies;
 
 #endif
