@@ -262,7 +262,7 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i < MAX_POWERUPS; i++) {
             check_powerup_collision(&powerups[i], player.rect, &player.lives, &player.speed, &player.damage, now, &effects);
         }
-        update_effects(&effects, &player.speed, &player.damage, now);
+        update_effects(&effects, &player.speed, &player.damage, now, powerups);
         
         // Renderingsfasen
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);

@@ -38,7 +38,7 @@ Powerup create_powerup(PowerupType type, int x, int y);
 void check_powerup_collision(Powerup* p, SDL_Rect player, int* lives, int* player_speed, int* player_damage, Uint32 current_time, ActiveEffects* effects);
 void update_powerup_effect(Powerup* powerups, int index, int* player_speed, int* player_damage, Uint32 current_time);
 void draw_powerup(SDL_Renderer* renderer, Powerup* p);
-void update_effects(ActiveEffects* effects, int* player_speed, int* player_damage, Uint32 current_time);
+void update_effects(ActiveEffects* effects, int* player_speed, int* player_damage, Uint32 current_time, Powerup powerups[]);
 
 extern SDL_Texture* tex_extralife;
 extern SDL_Texture* tex_extraspeed;

@@ -61,7 +61,7 @@ void check_powerup_collision(Powerup* p, SDL_Rect player, int* lives, int* playe
     }
 }
 
-void update_effects(ActiveEffects* effects, int* player_speed, int* player_damage, Uint32 current_time) {
+void update_effects(ActiveEffects* effects, int* player_speed, int* player_damage, Uint32 current_time, Powerup powerups[]) {
     if (effects->speed_active && current_time - effects->speed_start_time >= 3000) {
         *player_speed = DEFAULT_PLAYER_SPEED;
         effects->speed_active = false;
@@ -74,6 +74,13 @@ void update_effects(ActiveEffects* effects, int* player_speed, int* player_damag
 
     if (effects->freeze_active && current_time - effects->freeze_start_time >= 3000) {
         effects->freeze_active = false;
+    }
+
+    for (int i = 0; i < MAX_POWERUPS; i++) {
+        if (powerups[i].picked_up && powerups[i].duration > 0 &&
+            current_time - powerups[i].pickup_time >= powerups[i].duration) {
+            powerups[i].picked_up = false;
+        }
     }
 }
 
