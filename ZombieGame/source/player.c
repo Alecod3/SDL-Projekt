@@ -41,37 +41,36 @@ void draw_player(SDL_Renderer *renderer, const Player *p) {
 
 void draw_powerup_bars(SDL_Renderer *renderer, const Player *p, Powerup powerups[], int now) {
     int bar_y_offset = 10;
+    int bar_width = p->rect.w;
+    int bar_height = 5;
 
     for (int i = 0; i < MAX_POWERUPS; i++) {
-        if (powerups[i].picked_up && powerups[i].duration > 0 && powerups[i].type != POWERUP_EXTRA_LIFE) {
-            Uint32 elapsed = now - powerups[i].pickup_time;
-            Uint32 remaining = (elapsed < powerups[i].duration) ? (powerups[i].duration - elapsed) : 0;
+        if (!powerups[i].picked_up || powerups[i].duration == 0 || powerups[i].type == POWERUP_EXTRA_LIFE)
+            continue;
+        Uint32 elapsed = now - powerups[i].pickup_time;
+        if (elapsed >= powerups[i].duration) {
+            powerups[i].picked_up = false;
+            continue;
+        }
+        int filled_width = (int)((1.0f - ((float)elapsed / powerups[i].duration)) * bar_width);
+        SDL_Rect bar_bg = {p->rect.x, p->rect.y - bar_y_offset, bar_width, bar_height};
+        SDL_Rect bar_fg = {p->rect.x, p->rect.y - bar_y_offset, filled_width, bar_height};
 
-            int bar_width = p->rect.w;
-            int bar_height = 5;
-            int filled_width = (int)((remaining / (float)powerups[i].duration) * bar_width);
+        SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Mörkgrå bakgrund
+        SDL_RenderFillRect(renderer, &bar_bg);
 
-            SDL_Rect bar_bg = {p->rect.x, p->rect.y - bar_y_offset, bar_width, bar_height};
-            SDL_Rect bar_fg = {p->rect.x, p->rect.y - bar_y_offset, filled_width, bar_height};
-
-            SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Bakgrund (Mörkgrå)
-            SDL_RenderFillRect(renderer, &bar_bg);
-
-            switch (powerups[i].type) {
-                case POWERUP_SPEED_BOOST:
-                    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Gul
-                    break;
-                case POWERUP_DOUBLE_DAMAGE:
-                    SDL_SetRenderDrawColor(renderer, 128, 128, 128, 255); // Grå
-                    break;
-                case POWERUP_FREEZE_ENEMIES:
-                    SDL_SetRenderDrawColor(renderer, 0, 128, 255, 255); // Blå
-                    break;
-                default:
+        switch (powerups[i].type) {
+            case POWERUP_SPEED_BOOST:
+                SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Gul
+                break;
+            case POWERUP_DOUBLE_DAMAGE:
+                SDL_SetRenderDrawColor(renderer, 128, 128, 128, 255); // Grå
+                break;
+            case POWERUP_FREEZE_ENEMIES:
+                SDL_SetRenderDrawColor(renderer, 0, 128, 255, 255); // Blå
                 break;
             }
-            SDL_RenderFillRect(renderer, &bar_fg);
-            bar_y_offset += bar_height + 2;
-        }
+        SDL_RenderFillRect(renderer, &bar_fg);
+        bar_y_offset += bar_height + 2;
     }
 }
