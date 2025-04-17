@@ -19,10 +19,14 @@ Powerup create_powerup(PowerupType type, int x, int y) {
     p.picked_up = false;
     p.pickup_time = 0;
     // Sätter duration (10 sekunder) för powerups som har tidsbegränsad effekt
-    if (type == POWERUP_SPEED_BOOST || type == POWERUP_DOUBLE_DAMAGE || type == POWERUP_FREEZE_ENEMIES) {
-        p.duration = 10000; // 10 sekunder i millisekunder
-    } else {
-        p.duration = 0; // Ingen duration för extra life
+    if (type == POWERUP_SPEED_BOOST) {
+        p.duration = 3000; // 3 sekunder i millisekunder
+    } else if (type == POWERUP_DOUBLE_DAMAGE) {
+        p.duration = 6000; // 6 sekunder i millisekunder
+    } else if (POWERUP_EXTRA_LIFE) {
+        p.duration = 0;
+    } else if (type == POWERUP_FREEZE_ENEMIES) {
+        p.duration = 3000; // 3 sekunder i millisekunder
     }
     return p;
 }
