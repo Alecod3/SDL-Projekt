@@ -275,6 +275,30 @@ int SDL_main(int argc, char *argv[]) {
         SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
         SDL_RenderFillRect(renderer, &player);
 
+        // Visa en stapel per aktiv powerup ovanför spelaren (utom extra liv)
+        int bar_y_offset = 10;
+        for (int i = 0; i < MAX_POWERUPS; i++) {
+            if (powerups[i].picked_up && powerups[i].duration > 0 && powerups[i].type != POWERUP_EXTRA_LIFE) {
+                Uint32 elapsed = now - powerups[i].pickup_time;
+                Uint32 remaining = (powerups[i].duration > elapsed) ? (powerups[i].duration - elapsed) : 0;
+
+                int bar_width = PLAYER_SIZE;
+                int bar_height = 5;
+                int filled_width = (int)((remaining / (float)powerups[i].duration) * bar_width);
+
+                SDL_Rect bar_bg = {player.x, player.y - bar_y_offset, bar_width, bar_height};
+                SDL_Rect bar_fg = {player.x, player.y - bar_y_offset, filled_width, bar_height};
+
+                // Rita bakgrund (mörkgrå)
+                SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
+                SDL_RenderFillRect(renderer, &bar_bg);
+
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                SDL_RenderFillRect(renderer, &bar_fg);
+                bar_y_offset += bar_height + 2;
+            }
+        }
+
         // Rita mobs
         for (int i = 0; i < MAX_MOBS; i++) {
             if (mobs[i].active) {
