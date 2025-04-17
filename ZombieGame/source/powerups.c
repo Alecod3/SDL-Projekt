@@ -36,6 +36,8 @@ void check_powerup_collision(Powerup* p, SDL_Rect player, int* lives, int* playe
     SDL_Rect r = { p->rect.x, p->rect.y, p->rect.w, p->rect.h };
     if (SDL_HasIntersection(&r, &player)) {
         p->active = false;
+        p->picked_up = true;
+        p->pickup_time = current_time;
 
         switch (p->type) {
             case POWERUP_EXTRA_LIFE:
