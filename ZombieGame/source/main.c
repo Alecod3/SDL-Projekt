@@ -214,19 +214,9 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
-        // Kontrollera om någon freeze är aktiv
-        bool freeze_active = false;
-        for (int i = 0; i < MAX_POWERUPS; i++) {
-            if (powerups[i].picked_up && powerups[i].type == POWERUP_FREEZE_ENEMIES) {
-                Uint32 elapsed = now - powerups[i].pickup_time;
-                if (elapsed < powerups[i].duration) {
-                    freeze_active = true;
-                    break;
-                }
-            }
-        }
-
+        
         // Uppdatera mobs så att de rör sig mot spelaren (om de inte är frysta)
+        bool freeze_active = effects.freeze_active;
         for (int i = 0; i < MAX_MOBS; i++) {
             if (mobs[i].active) {
                 if (!freeze_active) {
