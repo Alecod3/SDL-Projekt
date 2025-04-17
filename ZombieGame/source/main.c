@@ -357,8 +357,17 @@ int main(int argc, char *argv[]) {
                 player.lives--;
                 mobs[i].active = false;
                 if (player.lives <= 0) {
-                    running = false;
-                }
+                    int result = showGameOver(renderer);
+                    if (result == 0) {
+                        skipMenu = true;
+                        return main(argc, argv);
+                    } else if (result == 1) {
+                        skipMenu = false;
+                        return main(argc, argv);
+                    } else {
+                        running = false;
+                    }
+                }                
             }
         }
         
