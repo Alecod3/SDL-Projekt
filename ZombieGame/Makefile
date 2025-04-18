@@ -6,7 +6,7 @@ INCLUDE = /opt/homebrew/include/SDL2
 LIBS = /opt/homebrew/lib
 
 CFLAGS = -g -I$(INCLUDE) -c
-LDFLAGS = -lSDL2main -lSDL2 -lSDL2_image -lm
+LDFLAGS = -lSDL2main -lSDL2 -lSDL2_image -lSDL2_ttf -lm
 
 OBJS = main.o powerups.o player.o mob.o
 

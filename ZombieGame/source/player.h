@@ -2,7 +2,7 @@
 #define PLAYER_H
 
 #include <SDL.h>
-
+#include "powerups.h"
 // Definiera konstanter om de inte redan finns globalt
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
@@ -20,5 +20,6 @@ typedef struct {
 Player create_player(int x, int y, int size, int speed, int damage, int lives);
 void update_player(Player *p, const Uint8 *state);
 void draw_player(SDL_Renderer *renderer, const Player *p);
+void draw_powerup_bars(SDL_Renderer *renderer, const Player *p, Powerup powerups[], int now);
 
 #endif 
