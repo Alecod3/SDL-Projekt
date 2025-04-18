@@ -2,6 +2,10 @@
 #include <math.h>
 #include "powerups.h"
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 Player create_player(int x, int y, int size, int speed, int damage, int lives) {
     Player p;
     p.rect.x = x;
@@ -36,9 +40,27 @@ void update_player(Player *p, const Uint8 *state) {
 
 extern SDL_Texture* tex_player;
 
+extern SDL_Texture* tex_player;
+
 void draw_player(SDL_Renderer *renderer, const Player *p) {
     if (tex_player) {
-        SDL_RenderCopy(renderer, tex_player, NULL, &p->rect);
+        int mx, my;
+        SDL_GetMouseState(&mx, &my);
+
+        // Spelarens mittpunkt
+        int px = p->rect.x + p->rect.w / 2;
+        int py = p->rect.y + p->rect.h / 2;
+
+        // Vektor till musen
+        float dx = mx - px;
+        float dy = my - py;
+
+        // Räkna ut vinkel i grader
+        float angle = atan2f(dy, dx) * (180.0f / M_PI);
+
+        SDL_Point center = { p->rect.w / 2, p->rect.h / 2 };
+
+        SDL_RenderCopyEx(renderer, tex_player, NULL, &p->rect, angle, &center, SDL_FLIP_NONE);
     } else {
         SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // fallback-färg
         SDL_RenderFillRect(renderer, &p->rect);
