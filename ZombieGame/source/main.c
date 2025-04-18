@@ -417,7 +417,12 @@ int main(int argc, char *argv[]) {
         // Kollision mellan spelare och mobs
         for (int i = 0; i < MAX_MOBS; i++) {
             if (mobs[i].active && SDL_HasIntersection(&player.rect, &mobs[i].rect)) {
-                player.lives--;
+                if (mobs[i].type == 3) {
+                    player.lives = player.lives - 2;
+                }
+                else {
+                    player.lives--;  
+                }
                 mobs[i].active = false;
                 if (player.lives <= 0) {
                     int result = showGameOver(renderer);
