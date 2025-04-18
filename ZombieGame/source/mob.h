@@ -17,6 +17,7 @@ typedef struct {
     bool active;
     int type;    // Används exempelvis för att avgöra färg eller om fienden har extra HP
     int health;
+    float speed;
 } Mob;
 
 // Funktioner för att hantera mobs
