@@ -88,7 +88,8 @@ void update_mob(Mob *mob, SDL_Rect player_rect) {
 
 extern SDL_Texture* tex_mob;
 
-void draw_mob(SDL_Renderer *renderer, const Mob *mob) {
+void draw_mob(SDL_Renderer *renderer, const Mob *mob, SDL_Rect player_rect)
+{
     if (!mob->active) return;
 
     // Sätt färg beroende på typ (tint-färg)
