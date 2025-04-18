@@ -6,9 +6,9 @@ INCLUDE = /opt/homebrew/include/SDL2
 LIBS = /opt/homebrew/lib
 
 CFLAGS = -g -I$(INCLUDE) -c
-LDFLAGS = -lSDL2main -lSDL2 -lSDL2_image -lSDL2_ttf -lm
+LDFLAGS = -lSDL2main -lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lm
 
-OBJS = main.o powerups.o player.o mob.o
+OBJS = main.o powerups.o player.o mob.o sound.o
 
 Game: $(OBJS)
 	$(CC) -o Game $(OBJS) $(LDFLAGS) -L $(LIBS)
@@ -24,6 +24,9 @@ player.o: $(SRCDIR)/player.c $(INCDIR)/player.h
 
 mob.o: $(SRCDIR)/mob.c $(INCDIR)/mob.h
 	$(CC) $(CFLAGS) $(SRCDIR)/mob.c -o mob.o
+
+sound.o: $(SRCDIR)/sound.c $(INCDIR)/sound.h
+	$(CC) $(CFLAGS) $(SRCDIR)/sound.c -o sound.o
 
 clean:
 	rm -f Game

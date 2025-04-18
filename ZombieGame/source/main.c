@@ -7,10 +7,10 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
-
 #include "player.h"
 #include "mob.h"
 #include "powerups.h"
+#include "sound.h"
 
 // Skärm- och spelkonstanter
 #define SCREEN_WIDTH 800
@@ -292,6 +292,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    init_sound();
+    play_music("source/b_music.wav");
+
     if (!skipMenu) {
         int menuResult = showMenu(renderer, window);
         if (menuResult != 0) {
@@ -558,6 +561,7 @@ int main(int argc, char *argv[]) {
     SDL_DestroyTexture(tex_extralife);
     SDL_DestroyTexture(tex_extraspeed);
     SDL_DestroyTexture(tex_doubledamage);
+    cleanup_sound();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     IMG_Quit();
