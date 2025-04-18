@@ -123,7 +123,14 @@ void draw_mob(SDL_Renderer *renderer, const Mob *mob, SDL_Rect player_rect)
 
         SDL_RenderCopyEx(renderer, tex_mob, NULL, &mob->rect, angle, NULL, SDL_FLIP_NONE);
     } else {
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        // Fallback om tex_mob inte laddats
+        switch (mob->type) {
+            case 0: SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255); break;
+            case 1: SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255); break;
+            case 2: SDL_SetRenderDrawColor(renderer, 255, 165, 0, 255); break;
+            case 3: SDL_SetRenderDrawColor(renderer, 128, 0, 128, 255); break;
+            default: SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); break;
+        }
         SDL_RenderFillRect(renderer, &mob->rect);
     }
 }
