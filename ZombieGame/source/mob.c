@@ -86,26 +86,35 @@ void update_mob(Mob *mob, SDL_Rect player_rect) {
     }
 }
 
+extern SDL_Texture* tex_mob;
+
 void draw_mob(SDL_Renderer *renderer, const Mob *mob) {
-    if (!mob->active)
-        return;
-    
+    if (!mob->active) return;
+
+    // Sätt färg beroende på typ (tint-färg)
     switch (mob->type) {
         case 0:
-            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);   // Röd
+            SDL_SetTextureColorMod(tex_mob, 255, 0, 0);    // Röd
             break;
         case 1:
-            SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);   // Blå
+            SDL_SetTextureColorMod(tex_mob, 0, 0, 255);    // Blå
             break;
         case 2:
-            SDL_SetRenderDrawColor(renderer, 255, 165, 0, 255); // Orange
+            SDL_SetTextureColorMod(tex_mob, 255, 165, 0);  // Orange
             break;
         case 3:
-            SDL_SetRenderDrawColor(renderer, 128, 0, 128, 255); // Lila (2 HP)
+            SDL_SetTextureColorMod(tex_mob, 128, 0, 128);  // Lila
             break;
         default:
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_SetTextureColorMod(tex_mob, 255, 255, 255); // Vit (neutral)
             break;
     }
-    SDL_RenderFillRect(renderer, &mob->rect);
+
+    if (tex_mob) {
+        SDL_RenderCopy(renderer, tex_mob, NULL, &mob->rect);
+    } else {
+        // Fallback om bilden saknas
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_RenderFillRect(renderer, &mob->rect);
+    }
 }

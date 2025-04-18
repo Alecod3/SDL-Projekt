@@ -30,6 +30,7 @@
 
 bool skipMenu = false;
 SDL_Texture* tex_player = NULL;
+SDL_Texture* tex_mob = NULL;
 
 int showSettings(SDL_Renderer *renderer, SDL_Window *window);
 
@@ -321,6 +322,12 @@ if (!tex_player) {
     return 1;
 }
 
+tex_mob = IMG_LoadTexture(renderer, "resources/zombie1.png");
+if (!tex_mob) {
+    SDL_Log("Kunde inte ladda in fiendetextur: %s", SDL_GetError());
+    return 1;
+}
+
     if (!tex_extralife || !tex_extraspeed || !tex_doubledamage) {
         SDL_Log("Kunde inte ladda in powerup-texturer: %s", SDL_GetError());
         SDL_DestroyRenderer(renderer);
@@ -573,6 +580,8 @@ if (!tex_player) {
     SDL_DestroyTexture(tex_extralife);
     SDL_DestroyTexture(tex_extraspeed);
     SDL_DestroyTexture(tex_doubledamage);
+    SDL_DestroyTexture(tex_player);
+    SDL_DestroyTexture(tex_mob);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     IMG_Quit();
