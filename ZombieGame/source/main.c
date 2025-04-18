@@ -383,6 +383,7 @@ int main(int argc, char *argv[]) {
                         float length = sqrtf(dx * dx + dy * dy);
                         bullets[i].dx = BULLET_SPEED * (dx / length);
                         bullets[i].dy = BULLET_SPEED * (dy / length);
+                        play_sound(SOUND_SHOOT);
                         break;
                     }
                 }
@@ -408,6 +409,7 @@ int main(int argc, char *argv[]) {
                         float length = sqrtf(dx * dx + dy * dy);
                         bullets[i].dx = BULLET_SPEED * (dx / length);
                         bullets[i].dy = BULLET_SPEED * (dy / length);
+                        play_sound(SOUND_SHOOT);
                         break;
                     }
                 }
@@ -516,6 +518,21 @@ int main(int argc, char *argv[]) {
         // Hantera kollisioner och effekter för powerups
         for (int i = 0; i < MAX_POWERUPS; i++) {
             check_powerup_collision(&powerups[i], player.rect, &player.lives, &player.speed, &player.damage, now, &effects);
+            if(powerups[i].picked_up){
+                switch(powerups[i].type){
+                    case POWERUP_EXTRA_LIFE:
+                        play_sound(SOUND_EXTRALIFE);
+                        break;
+                    case POWERUP_SPEED_BOOST:
+                        play_sound(SOUND_SPEED);
+                        break;
+                    case POWERUP_FREEZE_ENEMIES:
+                        play_sound(SOUND_FREEZE);
+                        break;
+                    case POWERUP_DOUBLE_DAMAGE:
+                        play_sound(SOUND_DAMAGE);
+                        break;
+                }
         }
         update_effects(&effects, &player.speed, &player.damage, now, powerups);
         
