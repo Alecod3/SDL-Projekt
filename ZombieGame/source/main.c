@@ -325,6 +325,12 @@ if (!tex_player) {
 tex_mob = IMG_LoadTexture(renderer, "resources/zombie1.png");
 if (!tex_mob) {
     SDL_Log("Kunde inte ladda in fiendetextur: %s", SDL_GetError());
+    SDL_DestroyTexture(tex_player); // du har laddat spelartestur innan
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    TTF_Quit();
+    IMG_Quit();
+    SDL_Quit();
     return 1;
 }
 
@@ -546,7 +552,7 @@ if (!tex_mob) {
         draw_powerup_bars(renderer, &player, powerups, now);
         for (int i = 0; i < MAX_MOBS; i++) {
             if (mobs[i].active) {
-                draw_mob(renderer, &mobs[i]);
+                draw_mob(renderer, &mobs[i], player.rect);
             }
         }
         
