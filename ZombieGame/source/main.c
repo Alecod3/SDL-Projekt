@@ -1,6 +1,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_ttf.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,12 +28,234 @@
 #define HEALTH_BAR_WIDTH 200
 #define HEALTH_BAR_HEIGHT 20
 
+bool skipMenu = false;
+
+int showSettings(SDL_Renderer *renderer, SDL_Window *window);
+
 // Bullet-ADT (här hålls den enkelt i main, men den kan även brytas ut)
 typedef struct {
     SDL_Rect rect;
     bool active;
     float dx, dy;
 } Bullet;
+
+int showMenu(SDL_Renderer *renderer, SDL_Window *window) {
+    SDL_Event event;
+    bool inMenu = true;
+    int selected = 0;
+    SDL_Rect buttons[3];
+    const char* labels[3] = {"Single Player", "Multiplayer", "Settings"};
+
+    TTF_Font* font = TTF_OpenFont("shlop.ttf", 28);
+    TTF_Font* titleFont = TTF_OpenFont("simbiot.ttf", 64);
+
+    for (int i = 0; i < 3; i++) {
+        buttons[i].x = SCREEN_WIDTH / 2 - 100;
+        buttons[i].y = 250 + i * 80;
+        buttons[i].w = 200;
+        buttons[i].h = 50;
+    }
+
+    while (inMenu) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) return -1;
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_UP) selected = (selected + 2) % 3;
+                if (event.key.keysym.sym == SDLK_DOWN) selected = (selected + 1) % 3;
+                if (event.key.keysym.sym == SDLK_RETURN) {
+                    if (selected == 2) { // Settings
+                        showSettings(renderer, window);
+                    } else {
+                        return selected;
+                    }
+                }
+            }
+            if (event.type == SDL_MOUSEMOTION) {
+                int mx = event.motion.x, my = event.motion.y;
+                for (int i = 0; i < 3; i++) {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h) selected = i;
+                }
+            }
+            if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
+                int mx = event.button.x, my = event.button.y;
+                for (int i = 0; i < 3; i++) {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h) return i;
+                }
+            }
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        if (titleFont) {
+            SDL_Color red = {200, 0, 0};
+            SDL_Surface* titleSurface = TTF_RenderText_Blended(titleFont, "Zombie Game", red);
+            SDL_Texture* titleTexture = SDL_CreateTextureFromSurface(renderer, titleSurface);
+            SDL_Rect titleRect = { SCREEN_WIDTH / 2 - titleSurface->w / 2, 60, titleSurface->w, titleSurface->h };
+            SDL_RenderCopy(renderer, titleTexture, NULL, &titleRect);
+            SDL_FreeSurface(titleSurface);
+            SDL_DestroyTexture(titleTexture);
+        }
+
+        for (int i = 0; i < 3; i++) {
+            SDL_SetRenderDrawColor(renderer, (i == selected) ? 180 : 90, 0, 0, 255);
+            SDL_RenderFillRect(renderer, &buttons[i]);
+
+            SDL_Color color = {255, 255, 255};
+            SDL_Surface* surface = TTF_RenderText_Blended(font, labels[i], color);
+            SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_Rect textRect = {
+                buttons[i].x + (buttons[i].w - surface->w) / 2,
+                buttons[i].y + (buttons[i].h - surface->h) / 2,
+                surface->w,
+                surface->h
+            };
+            SDL_RenderCopy(renderer, texture, NULL, &textRect);
+            SDL_FreeSurface(surface);
+            SDL_DestroyTexture(texture);
+        }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+
+    TTF_CloseFont(titleFont);
+    TTF_CloseFont(font);
+    return 0;
+}
+
+int showSettings(SDL_Renderer *renderer, SDL_Window *window) {
+    SDL_Event event;
+    bool inSettings = true;
+    TTF_Font* font = TTF_OpenFont("shlop.ttf", 28);
+    TTF_Font* titleFont = TTF_OpenFont("simbiot.ttf", 48);
+
+    if (!font || !titleFont) {
+        SDL_Log("Misslyckades med att ladda font i inställningsmeny: %s", TTF_GetError());
+        return 0;
+    }
+
+    while (inSettings) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) return -1;
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_RETURN) {
+                    inSettings = false;  // Gå tillbaka till menyn
+                }
+            }
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        // --- Rubrik: Settings ---
+        SDL_Color white = {255, 255, 255};
+        SDL_Surface* titleSurface = TTF_RenderText_Blended(titleFont, "Settings", white);
+        SDL_Texture* titleTexture = SDL_CreateTextureFromSurface(renderer, titleSurface);
+        SDL_Rect titleRect = { SCREEN_WIDTH / 2 - titleSurface->w / 2, 50, titleSurface->w, titleSurface->h };
+        SDL_RenderCopy(renderer, titleTexture, NULL, &titleRect);
+        SDL_FreeSurface(titleSurface);
+        SDL_DestroyTexture(titleTexture);
+
+        // --- Volym-rubrik till vänster ---
+        SDL_Surface* volumeSurface = TTF_RenderText_Blended(font, "Volume", white);
+        SDL_Texture* volumeTexture = SDL_CreateTextureFromSurface(renderer, volumeSurface);
+        SDL_Rect volumeRect = { 100, 180, volumeSurface->w, volumeSurface->h };
+        SDL_RenderCopy(renderer, volumeTexture, NULL, &volumeRect);
+        SDL_FreeSurface(volumeSurface);
+        SDL_DestroyTexture(volumeTexture);
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+
+    TTF_CloseFont(font);
+    TTF_CloseFont(titleFont);
+    return 0;
+}
+
+int showGameOver(SDL_Renderer *renderer) {
+    SDL_Event event;
+    bool inGameOver = true;
+    int selected = 0;
+    SDL_Rect buttons[3];
+    const char* labels[3] = {"Play Again", "Main Menu", "Exit Game"};
+
+    TTF_Font* optionFont = TTF_OpenFont("shlop.ttf", 28);
+    TTF_Font* titleFont = TTF_OpenFont("simbiot.ttf", 64);
+
+    for (int i = 0; i < 3; i++) {
+        buttons[i].x = SCREEN_WIDTH / 2 - 100;
+        buttons[i].y = 250 + i * 80;
+        buttons[i].w = 200;
+        buttons[i].h = 50;
+    }
+
+    while (inGameOver) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) return 2;
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_UP) selected = (selected + 2) % 3;
+                if (event.key.keysym.sym == SDLK_DOWN) selected = (selected + 1) % 3;
+                if (event.key.keysym.sym == SDLK_RETURN) return selected;
+            }
+            if (event.type == SDL_MOUSEMOTION) {
+                int mx = event.motion.x, my = event.motion.y;
+                for (int i = 0; i < 3; i++) {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h) selected = i;
+                }
+            }
+            if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
+                int mx = event.button.x, my = event.button.y;
+                for (int i = 0; i < 3; i++) {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h) return i;
+                }
+            }
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        if (titleFont) {
+            SDL_Color red = {200, 0, 0};
+            SDL_Surface* titleSurface = TTF_RenderText_Blended(titleFont, "GAME OVER", red);
+            SDL_Texture* titleTexture = SDL_CreateTextureFromSurface(renderer, titleSurface);
+            SDL_Rect titleRect = { SCREEN_WIDTH / 2 - titleSurface->w / 2, 60, titleSurface->w, titleSurface->h };
+            SDL_RenderCopy(renderer, titleTexture, NULL, &titleRect);
+            SDL_FreeSurface(titleSurface);
+            SDL_DestroyTexture(titleTexture);
+        }
+
+        for (int i = 0; i < 3; i++) {
+            SDL_SetRenderDrawColor(renderer, (i == selected) ? 180 : 90, 0, 0, 255);
+            SDL_RenderFillRect(renderer, &buttons[i]);
+
+            SDL_Color color = {255, 255, 255};
+            SDL_Surface* surface = TTF_RenderText_Blended(optionFont, labels[i], color);
+            SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_Rect textRect = {
+                buttons[i].x + (buttons[i].w - surface->w) / 2,
+                buttons[i].y + (buttons[i].h - surface->h) / 2,
+                surface->w,
+                surface->h
+            };
+            SDL_RenderCopy(renderer, texture, NULL, &textRect);
+            SDL_FreeSurface(surface);
+            SDL_DestroyTexture(texture);
+        }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+
+    TTF_CloseFont(optionFont);
+    TTF_CloseFont(titleFont);
+    return 0;
+}
 
 int main(int argc, char *argv[]) {
     // Initiera SDL2 och SDL_image
@@ -44,6 +267,13 @@ int main(int argc, char *argv[]) {
         SDL_Log("SDL_image kunde inte initieras: %s", IMG_GetError());
         return 1;
     }
+
+    if (TTF_Init() == -1) {
+        SDL_Log("SDL_ttf init error: %s", TTF_GetError());
+        SDL_Quit();
+        return 1;
+    }
+    
     
     SDL_Window *window = SDL_CreateWindow("Zombie Game",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -61,6 +291,19 @@ int main(int argc, char *argv[]) {
         SDL_Quit();
         return 1;
     }
+
+    if (!skipMenu) {
+        int menuResult = showMenu(renderer, window);
+        if (menuResult != 0) {
+            SDL_DestroyRenderer(renderer);
+            SDL_DestroyWindow(window);
+            TTF_Quit();
+            IMG_Quit();
+            SDL_Quit();
+            return 0;
+        }
+    }
+    
     
     // Ladda in powerup-texturer (variablerna tex_extralife, etc. definieras i powerups.c som externa)
     tex_extralife    = IMG_LoadTexture(renderer, "resources/extralife.png");
@@ -177,8 +420,17 @@ int main(int argc, char *argv[]) {
                 player.lives--;
                 mobs[i].active = false;
                 if (player.lives <= 0) {
-                    running = false;
-                }
+                    int result = showGameOver(renderer);
+                    if (result == 0) {
+                        skipMenu = true;
+                        return main(argc, argv);
+                    } else if (result == 1) {
+                        skipMenu = false;
+                        return main(argc, argv);
+                    } else {
+                        running = false;
+                    }
+                }                
             }
         }
         
