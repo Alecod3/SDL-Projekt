@@ -3,6 +3,10 @@
 #include <math.h>
 #include <SDL2/SDL.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 Mob create_mob(int x, int y, int size, int type, int health) {
     Mob m;
     m.rect.x = x;
@@ -112,9 +116,13 @@ void draw_mob(SDL_Renderer *renderer, const Mob *mob, SDL_Rect player_rect)
     }
 
     if (tex_mob) {
-        SDL_RenderCopy(renderer, tex_mob, NULL, &mob->rect);
+        // Beräkna riktning mot spelaren
+        float dx = (player_rect.x + player_rect.w / 2) - (mob->rect.x + mob->rect.w / 2);
+        float dy = (player_rect.y + player_rect.h / 2) - (mob->rect.y + mob->rect.h / 2);
+        float angle = atan2f(dy, dx) * 180.0f / (float)M_PI;
+
+        SDL_RenderCopyEx(renderer, tex_mob, NULL, &mob->rect, angle, NULL, SDL_FLIP_NONE);
     } else {
-        // Fallback om bilden saknas
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderFillRect(renderer, &mob->rect);
     }
