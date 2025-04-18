@@ -23,4 +23,6 @@ void update_player(Player *p, const Uint8 *state);
 void draw_player(SDL_Renderer *renderer, const Player *p);
 void draw_powerup_bars(SDL_Renderer *renderer, const Player *p, Powerup powerups[], int now);
 
+extern SDL_Texture* tex_player;
+
 #endif 

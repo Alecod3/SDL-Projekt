@@ -34,9 +34,15 @@ void update_player(Player *p, const Uint8 *state) {
     }
 }
 
+extern SDL_Texture* tex_player;
+
 void draw_player(SDL_Renderer *renderer, const Player *p) {
-    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);  // Grön färg
-    SDL_RenderFillRect(renderer, &p->rect);
+    if (tex_player) {
+        SDL_RenderCopy(renderer, tex_player, NULL, &p->rect);
+    } else {
+        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // fallback-färg
+        SDL_RenderFillRect(renderer, &p->rect);
+    }
 }
 
 void draw_powerup_bars(SDL_Renderer *renderer, const Player *p, Powerup powerups[], int now) {

@@ -29,6 +29,7 @@
 #define HEALTH_BAR_HEIGHT 20
 
 bool skipMenu = false;
+SDL_Texture* tex_player = NULL;
 
 int showSettings(SDL_Renderer *renderer, SDL_Window *window);
 
@@ -310,6 +311,15 @@ int main(int argc, char *argv[]) {
     tex_extraspeed   = IMG_LoadTexture(renderer, "resources/extraspeed.png");
     tex_doubledamage = IMG_LoadTexture(renderer, "resources/doubledamage.png");
     tex_freezeenemies = IMG_LoadTexture(renderer, "resources/freezeenemies.png");
+
+    tex_player = IMG_LoadTexture(renderer, "resources/hitman1.png");
+if (!tex_player) {
+    SDL_Log("Kunde inte ladda in spelartextur: %s", SDL_GetError());
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return 1;
+}
 
     if (!tex_extralife || !tex_extraspeed || !tex_doubledamage) {
         SDL_Log("Kunde inte ladda in powerup-texturer: %s", SDL_GetError());
