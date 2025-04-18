@@ -557,6 +557,20 @@ if (!tex_mob) {
         // Renderingsfasen
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
+
+        // Rita bakgrund med grön tile
+    int TILE_SIZE = 32;
+    SDL_Rect src = {0, 0, TILE_SIZE, TILE_SIZE};  // Grön tile från spritesheet
+    SDL_Rect dest;
+    for (int y = 0; y < SCREEN_HEIGHT; y += TILE_SIZE) {
+    for (int x = 0; x < SCREEN_WIDTH; x += TILE_SIZE) {
+        dest.x = x;
+        dest.y = y;
+        dest.w = TILE_SIZE;
+        dest.h = TILE_SIZE;
+        SDL_RenderCopy(renderer, tex_tiles, &src, &dest);
+    }
+}
         
         draw_player(renderer, &player);
         draw_powerup_bars(renderer, &player, powerups, now);
@@ -598,6 +612,7 @@ if (!tex_mob) {
     SDL_DestroyTexture(tex_doubledamage);
     SDL_DestroyTexture(tex_player);
     SDL_DestroyTexture(tex_mob);
+    SDL_DestroyTexture(tex_tiles);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     IMG_Quit();
