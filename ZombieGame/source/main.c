@@ -452,30 +452,38 @@ if (!tex_mob) {
             spacePressed = false;
         }
         
-        // Kollision mellan spelare och mobs
-        for (int i = 0; i < MAX_MOBS; i++) {
-            if (mobs[i].active && SDL_HasIntersection(&player.rect, &mobs[i].rect)) {
-                if (mobs[i].type == 3) {
-                    player.lives = player.lives - 2;
+        // Kollision och attack‑hantering mellan spelare och mobs
+for (int i = 0; i < MAX_MOBS; i++) {
+    if (!mobs[i].active)
+        continue;
+
+    if (mobs[i].attacking) {
+        Uint32 now = SDL_GetTicks();
+        // Slå bara om attack_interval passerat
+        if (now - mobs[i].last_attack_time >= mobs[i].attack_interval) {
+            if (mobs[i].type == 3) {
+                player.lives -= 2;
+            } else {
+                player.lives--;
+            }
+            mobs[i].last_attack_time = now;
+
+            // Kolla om spelaren dör
+            if (player.lives <= 0) {
+                int result = showGameOver(renderer);
+                if (result == 0) {
+                    skipMenu = true;
+                    return main(argc, argv);
+                } else if (result == 1) {
+                    skipMenu = false;
+                    return main(argc, argv);
+                } else {
+                    running = false;
                 }
-                else {
-                    player.lives--;  
-                }
-                mobs[i].active = false;
-                if (player.lives <= 0) {
-                    int result = showGameOver(renderer);
-                    if (result == 0) {
-                        skipMenu = true;
-                        return main(argc, argv);
-                    } else if (result == 1) {
-                        skipMenu = false;
-                        return main(argc, argv);
-                    } else {
-                        running = false;
-                    }
-                }                
             }
         }
+    }
+}
         
         // Uppdatera bullets: förflytta och kolla kollision med mobs
         for (int i = 0; i < MAX_BULLETS; i++) {
