@@ -38,6 +38,14 @@ Mob create_mob(int x, int y, int size, int type, int health) {
     m.active = true;
     m.type = type;
     m.health = health;
+
+
+
+    m.attacking  = false;
+    m.last_attack_time = 0;
+    m.attack_interval = 1000; 
+
+
     return m;
 }
 

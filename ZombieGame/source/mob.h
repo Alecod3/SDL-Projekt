@@ -18,6 +18,11 @@ typedef struct {
     int type;    // Används exempelvis för att avgöra färg eller om fienden har extra HP
     int health;
     float speed;
+
+    bool attacking;
+    Uint32 last_attack_time;
+    Uint32 attack_interval;
+
 } Mob;
 
 // Funktioner för att hantera mobs
