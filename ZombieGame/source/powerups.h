@@ -5,7 +5,7 @@
 #define MAX_HEALTH 3
 #define MAX_POWERUPS 5
 
-#include <SDL.h>
+#include <SDL2/SDL.h>
 #include <stdbool.h>
 
 typedef enum {

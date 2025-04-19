@@ -1,5 +1,5 @@
 #include "powerups.h"
-#include <SDL.h>
+#include <SDL2/SDL.h>
 
 // Externa texturer definieras här, de bör laddas (ex. med SDL_Image) någon annanstans i projektet.
 SDL_Texture* tex_extralife = NULL;

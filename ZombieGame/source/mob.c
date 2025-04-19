@@ -1,7 +1,7 @@
 #include "mob.h"
 #include <stdlib.h>
 #include <math.h>
-#include <SDL.h>
+#include <SDL2/SDL.h>
 
 Mob create_mob(int x, int y, int size, int type, int health) {
     Mob m;
