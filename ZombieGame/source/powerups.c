@@ -27,6 +27,7 @@ Powerup create_powerup(PowerupType type, int x, int y) {
     } else if (type == POWERUP_FREEZE_ENEMIES) {
         p.duration = 3000; // 3 sekunder i millisekunder
     }
+    p.sound_played = false;
     return p;
 }
 

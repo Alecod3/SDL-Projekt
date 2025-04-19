@@ -556,7 +556,7 @@ if (!tex_mob) {
         // Hantera kollisioner och effekter för powerups
         for (int i = 0; i < MAX_POWERUPS; i++) {
             check_powerup_collision(&powerups[i], player.rect, &player.lives, &player.speed, &player.damage, now, &effects);
-            if(powerups[i].picked_up){
+            if (powerups[i].picked_up && !powerups[i].sound_played) {
                 switch(powerups[i].type){
                     case POWERUP_EXTRA_LIFE:
                         play_sound(SOUND_EXTRALIFE);
@@ -573,8 +573,8 @@ if (!tex_mob) {
                     default:
                         break;
                 }
-                powerups[i].picked_up = false;
-            }
+                powerups[i].sound_played = true; // 👈 flagga att ljudet har spelats
+            }            
         }
         update_effects(&effects, &player.speed, &player.damage, now, powerups);
         

@@ -29,6 +29,7 @@ typedef struct {
     SDL_Rect rect;
     bool active;
     bool picked_up;
+    bool sound_played;
     Uint32 pickup_time;
     Uint32 duration;
 } Powerup;
