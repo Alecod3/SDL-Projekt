@@ -30,6 +30,8 @@
 #define HEALTH_BAR_WIDTH 200
 #define HEALTH_BAR_HEIGHT 20
 
+#define MULTI_OPTIONS 3
+
 bool skipMenu = false;
 SDL_Texture *tex_player = NULL;
 SDL_Texture *tex_mob = NULL;
@@ -51,8 +53,8 @@ int showMultiplayerMenu(SDL_Renderer *renderer, SDL_Window *window)
     bool inMenu = true;
     int selected = 0;
     const int n = 3;
-    const char *labels[n] = {"Host Game", "Join Game", "Back"};
-    SDL_Rect buttons[n];
+    const char *labels[MULTI_OPTIONS] = {"Host Game", "Join Game", "Back"};
+    SDL_Rect buttons[MULTI_OPTIONS];
     TTF_Font *font = TTF_OpenFont("shlop.ttf", 28);
     for (int i = 0; i < n; i++)
     {
@@ -117,6 +119,104 @@ int showMultiplayerMenu(SDL_Renderer *renderer, SDL_Window *window)
     }
     TTF_CloseFont(font);
     return -1;
+}
+int showJoinMenu(SDL_Renderer *renderer, SDL_Window *window, char *out_ip, size_t maxlen)
+{
+    SDL_Event event;
+    bool inMenu = true;
+    TTF_Font *font = TTF_OpenFont("shlop.ttf", 28);
+    if (!font)
+        return -1;
+    char ip[64] = "";
+    size_t len = 0;
+    SDL_StartTextInput();
+    while (inMenu)
+    {
+        while (SDL_PollEvent(&event))
+        {
+            if (event.type == SDL_QUIT)
+            {
+                SDL_StopTextInput();
+                return -1;
+            }
+            if (event.type == SDL_TEXTINPUT)
+            {
+                if (len + strlen(event.text.text) < maxlen)
+                {
+                    strcat(ip, event.text.text);
+                    len += strlen(event.text.text);
+                }
+            }
+            if (event.type == SDL_KEYDOWN)
+            {
+                if (event.key.keysym.sym == SDLK_BACKSPACE && len > 0)
+                {
+                    ip[--len] = '\0';
+                }
+                else if (event.key.keysym.sym == SDLK_RETURN && len > 0)
+                {
+                    strncpy(out_ip, ip, maxlen);
+                    inMenu = false;
+                }
+            }
+        }
+        // RENDERA
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        SDL_Color white = {255, 255, 255};
+        char prompt[128];
+        snprintf(prompt, sizeof(prompt), "Ange host IP: %s_", ip);
+        SDL_Surface *surf = TTF_RenderText_Blended(font, prompt, white);
+        SDL_Texture *tx = SDL_CreateTextureFromSurface(renderer, surf);
+        SDL_Rect dst = {100, SCREEN_HEIGHT / 2 - surf->h / 2, surf->w, surf->h};
+        SDL_RenderCopy(renderer, tx, NULL, &dst);
+        SDL_FreeSurface(surf);
+        SDL_DestroyTexture(tx);
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+    SDL_StopTextInput();
+    TTF_CloseFont(font);
+    return 0;
+}
+
+// --- Vänta‐på‐spelare–skärm för Host ---
+void showHostWaitMenu(SDL_Renderer *renderer)
+{
+    SDL_Event event;
+    TTF_Font *font = TTF_OpenFont("shlop.ttf", 48);
+    if (!font)
+        return;
+    bool inMenu = true;
+    while (inMenu)
+    {
+        while (SDL_PollEvent(&event))
+        {
+            if (event.type == SDL_QUIT)
+                exit(0);
+            // Du kan lägga till ESC för avbryt här om du vill
+        }
+        // Här kan du kolla om du fått en första UDP‐packet:
+        if (network_recv_state())
+        {
+            inMenu = false;
+            break;
+        }
+        // RENDERA “Waiting…”
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        SDL_Color white = {255, 255, 255};
+        SDL_Surface *surf = TTF_RenderText_Blended(font, "Waiting for player...", white);
+        SDL_Texture *tx = SDL_CreateTextureFromSurface(renderer, surf);
+        SDL_Rect dst = {SCREEN_WIDTH / 2 - surf->w / 2, SCREEN_HEIGHT / 2 - surf->h / 2,
+                        surf->w, surf->h};
+        SDL_RenderCopy(renderer, tx, NULL, &dst);
+        SDL_FreeSurface(surf);
+        SDL_DestroyTexture(tx);
+        SDL_RenderPresent(renderer);
+        SDL_Delay(100);
+    }
+    TTF_CloseFont(font);
 }
 
 int showMenu(SDL_Renderer *renderer, SDL_Window *window)
@@ -434,38 +534,25 @@ int main(int argc, char *argv[])
         { // Multiplayer valt
             int mp = showMultiplayerMenu(renderer, window);
             if (mp == 0)
-            {
+            { // Host
                 net_mode = NET_HOST;
+                if (network_init(NULL) < 0)
+                    return 1;
+                showHostWaitMenu(renderer); // vänta på join från klient
             }
             else if (mp == 1)
-            {
+            { // Join
                 net_mode = NET_CLIENT;
+                char host_ip[64];
+                if (showJoinMenu(renderer, window, host_ip, sizeof(host_ip)) < 0)
+                    return 0; // avbryt om user stänger fönster
+                if (network_init(host_ip) < 0)
+                    return 1;
             }
             else
-            {
-                return main(argc, argv); // tillbaka om "Back"
+            { // Back
+                return main(argc, argv);
             }
-            // För klient, läs IP från konsol
-            char host_ip[64] = "127.0.0.1";
-            if (net_mode == NET_CLIENT)
-            {
-                printf("Ange host IP: ");
-                scanf("%63s", host_ip);
-            }
-            if (network_init(host_ip) < 0)
-            {
-                SDL_Log("Network init failed");
-                return 1;
-            }
-        }
-        else if (menuResult != 0)
-        { // Single Player eller Exit
-            SDL_DestroyRenderer(renderer);
-            SDL_DestroyWindow(window);
-            TTF_Quit();
-            IMG_Quit();
-            SDL_Quit();
-            return 0;
         }
     }
 
@@ -521,7 +608,10 @@ int main(int argc, char *argv[])
 
     // Skapa spelaren via Player-ADT; DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE och MAX_HEALTH ska vara definierade (här antas de komma från powerups.h)
     Player player = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, PLAYER_SIZE, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
-
+    if (net_mode == NET_CLIENT)
+    {
+        network_send_state(&player);
+    }
     // Skapa bullets, mobs och powerups
     Bullet bullets[MAX_BULLETS] = {0};
     Mob mobs[MAX_MOBS];
@@ -874,7 +964,6 @@ int main(int argc, char *argv[])
     {
         network_cleanup();
     }
-
     cleanup_sound();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

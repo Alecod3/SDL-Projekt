@@ -1,6 +1,8 @@
+// network.c
 #include "network.h"
-#include <string.h>
+#include <SDL2/SDL_net.h>
 #include <stdio.h>
+#include <string.h>
 
 NetMode net_mode = NET_NONE;
 Player remote_player = {0};
@@ -11,35 +13,43 @@ static UDPpacket *packet = NULL;
 
 int network_init(const char *host_ip)
 {
-    udpsock = SDLNet_UDP_Open(NET_PORT);
-    if (!udpsock)
+    // Initiera SDL_net
+    if (SDLNet_Init() < 0)
     {
-        SDL_Log("UDP_Open: %s", SDLNet_GetError());
-        return -1;
-    }
-    packet = SDLNet_AllocPacket(MAX_PACKET_LEN);
-    if (!packet)
-    {
-        SDL_Log("AllocPacket: %s", SDLNet_GetError());
+        SDL_Log("SDLNet_Init failed: %s", SDLNet_GetError());
         return -1;
     }
 
-    if (net_mode == NET_HOST)
+    // Host binder port 9999, klient binder ephemeral port 0
+    int bind_port = (net_mode == NET_HOST ? NET_PORT : 0);
+    udpsock = SDLNet_UDP_Open(bind_port);
+    if (!udpsock)
     {
-        // Host: vi tar emot på port NET_PORT, ingen bind behövs utan vi har redan öppnat
-        SDL_Log("Hosting on port %d", NET_PORT);
+        SDL_Log("%s: UDP_Open(%d) failed: %s",
+                (net_mode == NET_HOST ? "Host" : "Client"),
+                bind_port, SDLNet_GetError());
+        return -1;
     }
-    else if (net_mode == NET_CLIENT)
+
+    packet = SDLNet_AllocPacket(MAX_PACKET_LEN);
+    if (!packet)
     {
-        // Klient: koppla upp mot host_ip på port NET_PORT
+        SDL_Log("AllocPacket failed: %s", SDLNet_GetError());
+        SDLNet_UDP_Close(udpsock);
+        return -1;
+    }
+
+    // För klient: slå upp hostens adress och bind för sändning
+    if (net_mode == NET_CLIENT)
+    {
         if (SDLNet_ResolveHost(&ip_remote, host_ip, NET_PORT) < 0)
         {
-            SDL_Log("ResolveHost: %s", SDLNet_GetError());
+            SDL_Log("ResolveHost(%s) failed: %s", host_ip, SDLNet_GetError());
             return -1;
         }
         SDLNet_UDP_Bind(udpsock, 1, &ip_remote);
-        SDL_Log("Client bound, will send to %s:%d", host_ip, NET_PORT);
     }
+
     return 0;
 }
 
@@ -47,27 +57,28 @@ void network_send_state(const Player *local)
 {
     if (net_mode == NET_NONE)
         return;
-    // Paketstruktur: [x,y,angle]
-    packet->len = snprintf((char *)packet->data, MAX_PACKET_LEN, "%d;%d\n",
+    // Formatera x;y
+    packet->len = snprintf((char *)packet->data, MAX_PACKET_LEN, "%d;%d",
                            local->rect.x, local->rect.y);
     packet->address = ip_remote;
     SDLNet_UDP_Send(udpsock, 1, packet);
 }
 
-void network_recv_state(void)
+int network_recv_state(void)
 {
     if (net_mode == NET_NONE)
-        return;
+        return 0;
     if (SDLNet_UDP_Recv(udpsock, packet))
     {
-        // Parsning
         int x, y;
         if (sscanf((char *)packet->data, "%d;%d", &x, &y) == 2)
         {
             remote_player.rect.x = x;
             remote_player.rect.y = y;
+            return 1;
         }
     }
+    return 0;
 }
 
 void network_cleanup(void)
@@ -76,4 +87,5 @@ void network_cleanup(void)
         SDLNet_FreePacket(packet);
     if (udpsock)
         SDLNet_UDP_Close(udpsock);
+    SDLNet_Quit();
 }
