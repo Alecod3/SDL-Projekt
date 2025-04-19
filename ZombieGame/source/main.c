@@ -604,10 +604,19 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    srand((unsigned int)time(NULL));
+    srand(123456);
 
     // Skapa spelaren via Player-ADT; DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE och MAX_HEALTH ska vara definierade (här antas de komma från powerups.h)
     Player player = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, PLAYER_SIZE, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
+    // Initiera remote_player med samma parametrar så draw_player vet storlek m.m.
+    remote_player = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, PLAYER_SIZE, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
+
+    // Om vi är klient: skicka ett första paket för att väcka hosten
+    if (net_mode == NET_CLIENT)
+    {
+        network_send_state(&player);
+    }
+
     if (net_mode == NET_CLIENT)
     {
         network_send_state(&player);
@@ -915,6 +924,11 @@ int main(int argc, char *argv[])
         }
 
         draw_player(renderer, &player);
+        if (net_mode != NET_NONE)
+        {
+            draw_player(renderer, &remote_player);
+        }
+
         draw_powerup_bars(renderer, &player, powerups, now);
         for (int i = 0; i < MAX_MOBS; i++)
         {
