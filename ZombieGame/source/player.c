@@ -97,6 +97,8 @@ void draw_powerup_bars(SDL_Renderer *renderer, const Player *p, Powerup powerups
             case POWERUP_FREEZE_ENEMIES:
                 SDL_SetRenderDrawColor(renderer, 0, 128, 255, 255); // Blå
                 break;
+            default:
+                break;
             }
         SDL_RenderFillRect(renderer, &bar_fg);
         bar_y_offset += bar_height + 2;

@@ -7,10 +7,10 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
-
 #include "player.h"
 #include "mob.h"
 #include "powerups.h"
+#include "sound.h"
 
 // Skärm- och spelkonstanter
 #define SCREEN_WIDTH 800
@@ -295,6 +295,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    init_sound();
+    play_music("source/spelmusik.wav");
+    
     if (!skipMenu) {
         int menuResult = showMenu(renderer, window);
         if (menuResult != 0) {
@@ -413,6 +416,7 @@ if (!tex_mob) {
                         float length = sqrtf(dx * dx + dy * dy);
                         bullets[i].dx = BULLET_SPEED * (dx / length);
                         bullets[i].dy = BULLET_SPEED * (dy / length);
+                        play_sound(SOUND_SHOOT);
                         break;
                     }
                 }
@@ -438,6 +442,7 @@ if (!tex_mob) {
                         float length = sqrtf(dx * dx + dy * dy);
                         bullets[i].dx = BULLET_SPEED * (dx / length);
                         bullets[i].dy = BULLET_SPEED * (dy / length);
+                        play_sound(SOUND_SHOOT);
                         break;
                     }
                 }
@@ -551,6 +556,25 @@ if (!tex_mob) {
         // Hantera kollisioner och effekter för powerups
         for (int i = 0; i < MAX_POWERUPS; i++) {
             check_powerup_collision(&powerups[i], player.rect, &player.lives, &player.speed, &player.damage, now, &effects);
+            if(powerups[i].picked_up){
+                switch(powerups[i].type){
+                    case POWERUP_EXTRA_LIFE:
+                        play_sound(SOUND_EXTRALIFE);
+                        break;
+                    case POWERUP_SPEED_BOOST:
+                        play_sound(SOUND_SPEED);
+                        break;
+                    case POWERUP_FREEZE_ENEMIES:
+                        play_sound(SOUND_FREEZE);
+                        break;
+                    case POWERUP_DOUBLE_DAMAGE:
+                        play_sound(SOUND_DAMAGE);
+                        break;
+                    default:
+                        break;
+                }
+                powerups[i].picked_up = false;
+            }
         }
         update_effects(&effects, &player.speed, &player.damage, now, powerups);
         
@@ -613,6 +637,7 @@ if (!tex_mob) {
     SDL_DestroyTexture(tex_player);
     SDL_DestroyTexture(tex_mob);
     SDL_DestroyTexture(tex_tiles);
+    cleanup_sound();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     IMG_Quit();
