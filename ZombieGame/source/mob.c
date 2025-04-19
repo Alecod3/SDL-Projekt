@@ -13,19 +13,19 @@ Mob create_mob(int x, int y, int size, int type, int health) {
     m.rect.y = y;
 
     switch (type) {
-        case 0: // Snabb och liten
+        case 0:
             m.rect.w = m.rect.h = 20;
             m.speed = 3.5f;
             break;
-        case 1: // Normal
+        case 1:
             m.rect.w = m.rect.h = 30;
             m.speed = 3.0f;
             break;
-        case 2: // Stor och lite långsammare
+        case 2:
             m.rect.w = m.rect.h = 40;
             m.speed = 2.4f;
             break;
-        case 3: // Tank
+        case 3:
             m.rect.w = m.rect.h = 50;
             m.speed = 1.8f;
             break;
@@ -39,12 +39,9 @@ Mob create_mob(int x, int y, int size, int type, int health) {
     m.type = type;
     m.health = health;
 
-
-
-    m.attacking  = false;
+    m.attacking = false;
     m.last_attack_time = 0;
-    m.attack_interval = 1000; 
-
+    m.attack_interval = 1000; // kan justeras
 
     return m;
 }
@@ -62,27 +59,32 @@ void update_mob(Mob *mob, SDL_Rect player_rect) {
     if (!mob->active)
         return;
 
-    float dx = player_rect.x - mob->rect.x;
-    float dy = player_rect.y - mob->rect.y;
-    float length = sqrtf(dx * dx + dy * dy);
-    if (length != 0) {
-        dx /= length;
-        dy /= length;
+    // Om mobben når spelaren: gå in i attacking‐läge och sluta röra på dig
+    if (SDL_HasIntersection(&mob->rect, &player_rect)) {
+        mob->attacking = true;
+        return;
+    } else {
+        mob->attacking = false;
+    }
 
-        float offset_x = ((rand() % 100) - 50) / 100.0f * 0.3f;
-        float offset_y = ((rand() % 100) - 50) / 100.0f * 0.3f;
-        dx += offset_x;
-        dy += offset_y;
-        length = sqrtf(dx * dx + dy * dy);
-        dx /= length;
-        dy /= length;
+    // Rörelse mot spelaren
+    float dx = (player_rect.x + player_rect.w/2) - (mob->rect.x + mob->rect.w/2);
+    float dy = (player_rect.y + player_rect.h/2) - (mob->rect.y + mob->rect.h/2);
+    float len = sqrtf(dx*dx + dy*dy);
+    if (len != 0) {
+        dx /= len;
+        dy /= len;
+
+        // Lägg till lite slumpmässig offset för rörelsen
+        dx += ((rand() % 100) - 50) / 100.0f * 0.3f;
+        dy += ((rand() % 100) - 50) / 100.0f * 0.3f;
+        len = sqrtf(dx*dx + dy*dy);
+        dx /= len; dy /= len;
 
         int move_x = (int)(dx * mob->speed);
         int move_y = (int)(dy * mob->speed);
-
-        // Se till att rörelsen är minst 1 pixel i någon riktning
-        if (move_x == 0 && dx != 0) move_x = (dx > 0) ? 1 : -1;
-        if (move_y == 0 && dy != 0) move_y = (dy > 0) ? 1 : -1;
+        if (move_x == 0 && dx != 0) move_x = dx>0?1:-1;
+        if (move_y == 0 && dy != 0) move_y = dy>0?1:-1;
 
         SDL_Rect new_pos = mob->rect;
         new_pos.x += move_x;
@@ -92,8 +94,8 @@ void update_mob(Mob *mob, SDL_Rect player_rect) {
             new_pos.y >= 0 && new_pos.y + mob->rect.h <= SCREEN_HEIGHT) {
             mob->rect = new_pos;
         } else {
-            mob->rect.x += (rand() % 3 - 1) * (int)(mob->speed);
-            mob->rect.y += (rand() % 3 - 1) * (int)(mob->speed);
+            mob->rect.x += (rand()%3 -1)*(int)(mob->speed);
+            mob->rect.y += (rand()%3 -1)*(int)(mob->speed);
         }
     }
 }
