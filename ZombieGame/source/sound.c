@@ -9,10 +9,13 @@ void init_sound(){
         printf("SDL_mixer init error: %s\n", Mix_GetError());
     }
     soundEffects[SOUND_SHOOT]     = Mix_LoadWAV("source/shoot.wav");
-    soundEffects[SOUND_EXTRALIFE] = Mix_LoadWAV("source/life1.wav");
+    soundEffects[SOUND_EXTRALIFE] = Mix_LoadWAV("source/life2.wav");
     soundEffects[SOUND_SPEED]     = Mix_LoadWAV("source/speed.wav");
+    Mix_VolumeChunk(soundEffects[SOUND_SPEED], 128);
     soundEffects[SOUND_FREEZE]    = Mix_LoadWAV("source/freeze.wav");
+    Mix_VolumeChunk(soundEffects[SOUND_FREEZE], 128);
     soundEffects[SOUND_DAMAGE]    = Mix_LoadWAV("source/ddamage.wav");
+    Mix_VolumeChunk(soundEffects[SOUND_DAMAGE], 128);
 }
 
 void play_music(const char *filename){
@@ -20,6 +23,7 @@ void play_music(const char *filename){
     if(!bgMusic){
         printf("Misslyckades med att ladda musik: %s\n", Mix_GetError());
     }else{
+        Mix_VolumeMusic(18); 
         Mix_PlayMusic(bgMusic, -1);
     }
 }

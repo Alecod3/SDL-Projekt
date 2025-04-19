@@ -293,8 +293,8 @@ int main(int argc, char *argv[]) {
     }
 
     init_sound();
-    play_music("source/b_music.wav");
-
+    play_music("source/spelmusik.wav");
+    
     if (!skipMenu) {
         int menuResult = showMenu(renderer, window);
         if (menuResult != 0) {
@@ -532,7 +532,11 @@ int main(int argc, char *argv[]) {
                     case POWERUP_DOUBLE_DAMAGE:
                         play_sound(SOUND_DAMAGE);
                         break;
+                    default:
+                        break;
                 }
+                powerups[i].picked_up = false;
+            }
         }
         update_effects(&effects, &player.speed, &player.damage, now, powerups);
         
