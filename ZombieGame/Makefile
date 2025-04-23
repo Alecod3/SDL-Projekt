@@ -1,32 +1,26 @@
-# Makefile for Windows
-
-SRCDIR = ./source
 CC = gcc
-INCLUDE = C:\msys64\mingw64\include\SDL2
+CFLAGS = -g -IC:\msys64\mingw64\include\SDL2
+LDFLAGS = -lmingw32 -lSDL2main -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_net -lSDL2 -mwindows -lm
 
-CFLAGS = -g -I$(INCLUDE) -c
-LDFLAGS = -lmingw32 -lSDL2main -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2 -mwindows -lm
+all: Game
 
-OBJS = main.o powerups.o player.o mob.o sound.o
+Game: main.o powerups.o player.o mob.o sound.o
+	$(CC) main.o powerups.o player.o mob.o sound.o -o Game $(LDFLAGS)
 
-Game: $(OBJS)
-	$(CC) $(OBJS) -o Game $(LDFLAGS)
+main.o: ./source/main.c
+	$(CC) $(CFLAGS) -c ./source/main.c -o main.o
 
-main.o: $(SRCDIR)/main.c
-	$(CC) $(CFLAGS) $(SRCDIR)/main.c -o main.o
+powerups.o: ./source/powerups.c
+	$(CC) $(CFLAGS) -c ./source/powerups.c -o powerups.o
 
-powerups.o: $(SRCDIR)/powerups.c
-	$(CC) $(CFLAGS) $(SRCDIR)/powerups.c -o powerups.o
+player.o: ./source/player.c
+	$(CC) $(CFLAGS) -c ./source/player.c -o player.o
 
-player.o: $(SRCDIR)/player.c
-	$(CC) $(CFLAGS) $(SRCDIR)/player.c -o player.o
+mob.o: ./source/mob.c
+	$(CC) $(CFLAGS) -c ./source/mob.c -o mob.o
 
-mob.o: $(SRCDIR)/mob.c
-	$(CC) $(CFLAGS) $(SRCDIR)/mob.c -o mob.o
-
-sound.o: $(SRCDIR)/sound.c
-	$(CC) $(CFLAGS) $(SRCDIR)/sound.c -o sound.o
+sound.o: ./source/sound.c
+	$(CC) $(CFLAGS) -c ./source/sound.c -o sound.o
 
 clean:
-	del Game.exe
-	del *.o
+	del *.o Game.exe

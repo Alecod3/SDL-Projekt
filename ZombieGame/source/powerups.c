@@ -1,130 +1,45 @@
 #include "powerups.h"
 #include <SDL2/SDL.h>
+#include "player.h"
+#include <stdbool.h>
 
-// Externa texturer definieras här, de bör laddas (ex. med SDL_Image) någon annanstans i projektet.
-SDL_Texture* tex_extralife = NULL;
-SDL_Texture* tex_extraspeed = NULL;
-SDL_Texture* tex_doubledamage = NULL;
-SDL_Texture* tex_freezeenemies = NULL;
-
-// Skapar en ny powerup med position och typ
-Powerup create_powerup(PowerupType type, int x, int y) {
+Powerup create_powerup(PowerupType type, int x, int y)
+{
     Powerup p;
-    p.type = type;
     p.rect.x = x;
     p.rect.y = y;
-    p.rect.w = 32; // Exempelstorlek
-    p.rect.h = 32; // Exempelstorlek
+    p.rect.w = POWERUP_SIZE;
+    p.rect.h = POWERUP_SIZE;
     p.active = true;
     p.picked_up = false;
-    p.pickup_time = 0;
-    if (type == POWERUP_SPEED_BOOST) {
-        p.duration = 3000; // 3 sekunder i millisekunder
-    } else if (type == POWERUP_DOUBLE_DAMAGE) {
-        p.duration = 6000; // 6 sekunder i millisekunder
-    } else if (POWERUP_EXTRA_LIFE) {
-        p.duration = 0;
-    } else if (type == POWERUP_FREEZE_ENEMIES) {
-        p.duration = 3000; // 3 sekunder i millisekunder
-    }
+    p.type = type;
     p.sound_played = false;
+    p.pickup_time = 0;
+    switch (type)
+    {
+    case POWERUP_SPEED_BOOST:
+        p.duration = POWERUP_SPEED_DURATION;
+        break;
+    case POWERUP_DOUBLE_DAMAGE:
+        p.duration = POWERUP_DAMAGE_DURATION;
+        break;
+    case POWERUP_FREEZE_ENEMIES:
+        p.duration = POWERUP_FREEZE_DURATION;
+        break;
+    default:
+        p.duration = 0; // POWERUP_EXTRA_LIFE has no duration
+        break;
+    }
     return p;
 }
 
-void check_powerup_collision(Powerup* p, SDL_Rect player, int* lives, int* player_speed, int* player_damage, Uint32 current_time, ActiveEffects* effects) {
-    if (!p->active) return;
-
-    SDL_Rect r = { p->rect.x, p->rect.y, p->rect.w, p->rect.h };
-    if (SDL_HasIntersection(&r, &player)) {
-        p->active = false;
-        p->picked_up = true;
-        p->pickup_time = current_time;
-
-        switch (p->type) {
-            case POWERUP_EXTRA_LIFE:
-                *lives = (*lives < MAX_HEALTH) ? *lives + 1 : *lives;
-                break;
-            case POWERUP_SPEED_BOOST:
-                *player_speed = DEFAULT_PLAYER_SPEED * 2;
-                effects->speed_active = true;
-                effects->speed_start_time = current_time;
-                break;
-            case POWERUP_DOUBLE_DAMAGE:
-                *player_damage = DEFAULT_PLAYER_DAMAGE * 2;
-                effects->damage_active = true;
-                effects->damage_start_time = current_time;
-                break;
-            case POWERUP_FREEZE_ENEMIES:
-                effects->freeze_active = true;
-                effects->freeze_start_time = current_time;
-                break;
-        }
-    }
-}
-
-void update_effects(ActiveEffects* effects, int* player_speed, int* player_damage, Uint32 current_time, Powerup powerups[]) {
-    if (effects->speed_active && current_time - effects->speed_start_time >= 3000) {
-        *player_speed = DEFAULT_PLAYER_SPEED;
-        effects->speed_active = false;
-    }
-
-    if (effects->damage_active && current_time - effects->damage_start_time >= 3000) {
-        *player_damage = DEFAULT_PLAYER_DAMAGE;
-        effects->damage_active = false;
-    }
-
-    if (effects->freeze_active && current_time - effects->freeze_start_time >= 3000) {
-        effects->freeze_active = false;
-    }
-
-    for (int i = 0; i < MAX_POWERUPS; i++) {
-        if (powerups[i].picked_up && powerups[i].duration > 0 &&
-            current_time - powerups[i].pickup_time >= powerups[i].duration) {
-            powerups[i].picked_up = false;
-        }
-    }
-}
-
-
-void update_powerup_effect(Powerup* powerups, int index, int* player_speed, int* player_damage, Uint32 current_time) {
-    Powerup* p = &powerups[index];
-
-    if (!p->picked_up || p->duration == 0) return;
-
-    if (current_time - p->pickup_time >= p->duration) {
-        p->picked_up = false;
-
-        // Kolla om någon annan powerup av samma typ fortfarande är aktiv
-        bool same_type_active = false;
-        for (int i = 0; i < MAX_POWERUPS; i++) {
-            if (i != index && powerups[i].picked_up && powerups[i].type == p->type) {
-                same_type_active = true;
-                break;
-            }
-        }
-
-        // Om ingen annan likadan powerup är aktiv, återställ attribut
-        if (!same_type_active) {
-            switch (p->type) {
-                case POWERUP_SPEED_BOOST:
-                    *player_speed = DEFAULT_PLAYER_SPEED;
-                    break;
-                case POWERUP_DOUBLE_DAMAGE:
-                    *player_damage = DEFAULT_PLAYER_DAMAGE;
-                    break;
-                default:
-                    break;
-            }
-        }
-    }
-}
-
-// Renderar powerup på skärmen
-void draw_powerup(SDL_Renderer* renderer, Powerup* p) {
-    if (!p->active) return;
-
-    SDL_Texture* texture = NULL;
-    switch (p->type) {
+void draw_powerup(SDL_Renderer *renderer, Powerup *p)
+{
+    if (p->active && !p->picked_up)
+    {
+        SDL_Texture *texture = NULL;
+        switch (p->type)
+        {
         case POWERUP_EXTRA_LIFE:
             texture = tex_extralife;
             break;
@@ -137,13 +52,124 @@ void draw_powerup(SDL_Renderer* renderer, Powerup* p) {
         case POWERUP_FREEZE_ENEMIES:
             texture = tex_freezeenemies;
             break;
+        }
+        if (texture)
+        {
+            SDL_RenderCopy(renderer, texture, NULL, &p->rect);
+        }
     }
+}
 
-    if (texture != NULL) {
-        SDL_RenderCopy(renderer, texture, NULL, &p->rect);
-    } else {
-        // Om ingen textur är laddad, rita en röd rektangel som en placeholder
-        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &p->rect);
+bool check_powerup_collision(Powerup *p, SDL_Rect player, int *lives, float *player_speed, int *player_damage, Uint32 current_time, ActiveEffects *effects)
+{
+    if (!p->active || p->picked_up)
+        return false;
+    if (SDL_HasIntersection(&player, &p->rect))
+    {
+        p->picked_up = true;
+        p->pickup_time = current_time;
+        switch (p->type)
+        {
+        case POWERUP_EXTRA_LIFE:
+            if (*lives < MAX_HEALTH)
+                (*lives)++;
+            break;
+        case POWERUP_SPEED_BOOST:
+            if (!effects->speed_active)
+                *player_speed *= 2.0f;
+            effects->speed_active = true;
+            effects->speed_start_time = current_time;
+            break;
+        case POWERUP_DOUBLE_DAMAGE:
+            if (!effects->damage_active)
+                *player_damage *= 2;
+            effects->damage_active = true;
+            effects->damage_start_time = current_time;
+            break;
+        case POWERUP_FREEZE_ENEMIES:
+            if (!effects->freeze_active)
+                effects->freeze_active = true;
+            effects->freeze_start_time = current_time;
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
+void update_effects(ActiveEffects *effects, float *player_speed, int *player_damage, Uint32 current_time, Powerup powerups[])
+{
+    if (effects->speed_active && (current_time - effects->speed_start_time) >= POWERUP_SPEED_DURATION)
+    {
+        *player_speed /= 2.0f;
+        effects->speed_active = false;
+    }
+    if (effects->damage_active && (current_time - effects->damage_start_time) >= POWERUP_DAMAGE_DURATION)
+    {
+        *player_damage /= 2;
+        effects->damage_active = false;
+    }
+    if (effects->freeze_active && (current_time - effects->freeze_start_time) >= POWERUP_FREEZE_DURATION)
+    {
+        effects->freeze_active = false;
+    }
+}
+
+void draw_powerup_bars(SDL_Renderer *renderer, Player *player, Powerup powerups[], Uint32 current_time)
+{
+    int bar_y_offset = 10;
+    int bar_width = player->rect.w;
+    int bar_height = 5;
+
+    // Draw bars for active effects based on ActiveEffects
+    if (player)
+    {
+        SDL_Rect bar_bg = {player->rect.x, player->rect.y - bar_y_offset, bar_width, bar_height};
+        SDL_Rect bar_fg = {player->rect.x, player->rect.y - bar_y_offset, bar_width, bar_height};
+
+        // Speed boost bar (blue)
+        if (powerups[POWERUP_SPEED_BOOST].picked_up && powerups[POWERUP_SPEED_BOOST].pickup_time + powerups[POWERUP_SPEED_BOOST].duration > current_time)
+        {
+            Uint32 elapsed = current_time - powerups[POWERUP_SPEED_BOOST].pickup_time;
+            int filled_width = (int)((1.0f - ((float)elapsed / powerups[POWERUP_SPEED_BOOST].duration)) * bar_width);
+            bar_fg.w = filled_width;
+
+            SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Dark gray background
+            SDL_RenderFillRect(renderer, &bar_bg);
+            SDL_SetRenderDrawColor(renderer, 0, 128, 255, 255); // Blue foreground
+            SDL_RenderFillRect(renderer, &bar_fg);
+            bar_y_offset += bar_height + 2;
+            bar_bg.y = player->rect.y - bar_y_offset;
+            bar_fg.y = player->rect.y - bar_y_offset;
+        }
+
+        // Double damage bar (gray)
+        if (powerups[POWERUP_DOUBLE_DAMAGE].picked_up && powerups[POWERUP_DOUBLE_DAMAGE].pickup_time + powerups[POWERUP_DOUBLE_DAMAGE].duration > current_time)
+        {
+            Uint32 elapsed = current_time - powerups[POWERUP_DOUBLE_DAMAGE].pickup_time;
+            int filled_width = (int)((1.0f - ((float)elapsed / powerups[POWERUP_DOUBLE_DAMAGE].duration)) * bar_width);
+            bar_fg.w = filled_width;
+
+            SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Dark gray background
+            SDL_RenderFillRect(renderer, &bar_bg);
+            SDL_SetRenderDrawColor(renderer, 128, 128, 128, 255); // Gray foreground
+            SDL_RenderFillRect(renderer, &bar_fg);
+            bar_y_offset += bar_height + 2;
+            bar_bg.y = player->rect.y - bar_y_offset;
+            bar_fg.y = player->rect.y - bar_y_offset;
+        }
+
+        // Freeze enemies bar (yellow)
+        if (powerups[POWERUP_FREEZE_ENEMIES].picked_up && powerups[POWERUP_FREEZE_ENEMIES].pickup_time + powerups[POWERUP_FREEZE_ENEMIES].duration > current_time)
+        {
+            Uint32 elapsed = current_time - powerups[POWERUP_FREEZE_ENEMIES].pickup_time;
+            int filled_width = (int)((1.0f - ((float)elapsed / powerups[POWERUP_FREEZE_ENEMIES].duration)) * bar_width);
+            bar_fg.w = filled_width;
+
+            SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Dark gray background
+            SDL_RenderFillRect(renderer, &bar_bg);
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Yellow foreground
+            SDL_RenderFillRect(renderer, &bar_fg);
+        }
     }
 }
