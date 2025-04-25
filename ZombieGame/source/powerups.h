@@ -1,5 +1,6 @@
 #ifndef POWERUPS_H
 #define POWERUPS_H
+
 #include <SDL2/SDL.h>
 #include "sound.h"
 #include "player.h"
@@ -47,6 +48,7 @@ extern SDL_Texture *tex_freezeenemies;
 Powerup create_powerup(PowerupType type, int x, int y);
 void draw_powerup(SDL_Renderer *renderer, Powerup *p);
 bool check_powerup_collision(Powerup *p, SDL_Rect player, int *lives, float *player_speed, int *player_damage, Uint32 current_time, ActiveEffects *effects);
+void apply_powerup_effect(Powerup *powerup, Player *player, ActiveEffects *effects, Uint32 now);
 void update_effects(ActiveEffects *effects, float *player_speed, int *player_damage, Uint32 current_time, Powerup powerups[]);
 void draw_powerup_bars(SDL_Renderer *renderer, Player *player, Powerup powerups[], Uint32 current_time);
 

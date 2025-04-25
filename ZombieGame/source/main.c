@@ -116,7 +116,8 @@ int showGameOver(SDL_Renderer *renderer);
 int showIPInputScreen(SDL_Renderer *renderer, char *ip_buffer, int buffer_size);
 int showConnectionScreen(SDL_Renderer *renderer, UDPsocket socket, IPaddress *peer, bool is_host);
 void send_packet(UDPsocket socket, IPaddress peer, Packet *packet);
-void handle_network(UDPsocket socket, Player *remote_player, Bullet bullets[], Mob mobs[], Powerup powerups[], int *remote_lives, int *remote_score, float *remote_speed, int *remote_damage, ActiveEffects *remote_effects);
+void handle_network(UDPsocket socket, Player *local_player, int *local_score, Player *remote_player, Bullet bullets[], Mob mobs[], Powerup powerups[], int *remote_lives, int *remote_score, float *remote_speed, int *remote_damage, ActiveEffects *local_effects, ActiveEffects *remote_effects);
+
 bool is_valid_ip(const char *ip);
 
 int main(int argc, char *argv[])
@@ -419,9 +420,7 @@ int main(int argc, char *argv[])
             float angle = atan2f(dy, dx) * 180.0f / M_PI;
             Packet pos_packet = {PACKET_PLAYER_POS, local_player_id, .pos = {(float)local_player.rect.x, (float)local_player.rect.y, angle}};
             send_packet(udp_socket, peer, &pos_packet);
-            Packet state_packet = {PACKET_GAME_STATE, local_player_id, .state = {local_player.lives, local_score, local_player.speed, local_player.damage}};
-            send_packet(udp_socket, peer, &state_packet);
-            handle_network(udp_socket, &remote_player, bullets, mobs, powerups, &remote_player.lives, &remote_score, &remote_speed, &remote_damage, &remote_effects);
+            handle_network(udp_socket, &local_player, &local_score, &remote_player, bullets, mobs, powerups, &remote_player.lives, &remote_score, &remote_speed, &remote_damage, &local_effects, &remote_effects);
         }
 
         now = SDL_GetTicks();
@@ -435,7 +434,6 @@ int main(int argc, char *argv[])
                         update_mob(&mobs[i], local_player.rect, remote_player.rect, is_multiplayer);
                     if (mobs[i].attacking && now - mobs[i].last_attack_time >= mobs[i].attack_interval)
                     {
-                        // Determine which player is closer to apply damage
                         float dx_local = (local_player.rect.x + local_player.rect.w / 2) - (mobs[i].rect.x + mobs[i].rect.w / 2);
                         float dy_local = (local_player.rect.y + local_player.rect.h / 2) - (mobs[i].rect.y + mobs[i].rect.h / 2);
                         float dist_local = sqrtf(dx_local * dx_local + dy_local * dy_local);
@@ -447,16 +445,22 @@ int main(int argc, char *argv[])
                         if (is_multiplayer && dist_remote < dist_local)
                         {
                             remote_player.lives -= (mobs[i].type == 3) ? 2 : 1;
+                            if (remote_player.lives < 0)
+                                remote_player.lives = 0;
                         }
                         else
                         {
                             local_player.lives -= (mobs[i].type == 3) ? 2 : 1;
+                            if (local_player.lives < 0)
+                                local_player.lives = 0;
                         }
                         mobs[i].last_attack_time = now;
                         if (is_multiplayer)
                         {
-                            Packet state_packet = {PACKET_GAME_STATE, local_player_id, .state = {local_player.lives, local_score, local_player.speed, local_player.damage}};
-                            send_packet(udp_socket, peer, &state_packet);
+                            Packet state_packet_local = {PACKET_GAME_STATE, 0, .state = {local_player.lives, local_score, local_player.speed, local_player.damage}};
+                            send_packet(udp_socket, peer, &state_packet_local);
+                            Packet state_packet_remote = {PACKET_GAME_STATE, 1, .state = {remote_player.lives, remote_score, remote_player.speed, remote_player.damage}};
+                            send_packet(udp_socket, peer, &state_packet_remote);
                         }
                     }
                     if (is_multiplayer)
@@ -558,40 +562,56 @@ int main(int argc, char *argv[])
                 }
                 last_powerup_spawn_time = now;
             }
+
+            // Send periodic state updates
+            if (is_multiplayer)
+            {
+                Packet state_packet_local = {PACKET_GAME_STATE, 0, .state = {local_player.lives, local_score, local_player.speed, local_player.damage}};
+                send_packet(udp_socket, peer, &state_packet_local);
+                Packet state_packet_remote = {PACKET_GAME_STATE, 1, .state = {remote_player.lives, remote_score, remote_player.speed, remote_player.damage}};
+                send_packet(udp_socket, peer, &state_packet_remote);
+            }
         }
 
-        // Powerup collisions for local player (both host and client)
+        // Powerup collisions for local player (both host and client detect, host applies)
         for (int i = 0; i < MAX_POWERUPS; i++)
         {
             if (powerups[i].active && !powerups[i].picked_up)
             {
-                bool local_collision = check_powerup_collision(&powerups[i], local_player.rect, &local_player.lives, &local_player.speed, &local_player.damage, now, &local_effects);
+                bool local_collision = SDL_HasIntersection(&powerups[i].rect, &local_player.rect);
                 if (local_collision)
                 {
-                    powerups[i].picked_up = true;
-                    powerups[i].pickup_time = now;
-                    switch (powerups[i].type)
+                    if (is_host)
                     {
-                    case POWERUP_EXTRA_LIFE:
-                        play_sound(SOUND_EXTRALIFE);
-                        break;
-                    case POWERUP_SPEED_BOOST:
-                        play_sound(SOUND_SPEED);
-                        break;
-                    case POWERUP_FREEZE_ENEMIES:
-                        play_sound(SOUND_FREEZE);
-                        break;
-                    case POWERUP_DOUBLE_DAMAGE:
-                        play_sound(SOUND_DAMAGE);
-                        break;
+                        powerups[i].picked_up = true;
+                        powerups[i].pickup_time = now;
+                        apply_powerup_effect(&powerups[i], &local_player, &local_effects, now);
+                        Packet state_packet = {PACKET_GAME_STATE, local_player_id, .state = {local_player.lives, local_score, local_player.speed, local_player.damage}};
+                        send_packet(udp_socket, peer, &state_packet);
                     }
-                    powerups[i].sound_played = true;
+                    if (!powerups[i].sound_played)
+                    {
+                        switch (powerups[i].type)
+                        {
+                        case POWERUP_EXTRA_LIFE:
+                            play_sound(SOUND_EXTRALIFE);
+                            break;
+                        case POWERUP_SPEED_BOOST:
+                            play_sound(SOUND_SPEED);
+                            break;
+                        case POWERUP_FREEZE_ENEMIES:
+                            play_sound(SOUND_FREEZE);
+                            break;
+                        case POWERUP_DOUBLE_DAMAGE:
+                            play_sound(SOUND_DAMAGE);
+                            break;
+                        }
+                        powerups[i].sound_played = true;
+                    }
                     if (is_multiplayer)
                     {
                         Packet p_packet = {PACKET_POWERUP_UPDATE, local_player_id, .powerup = {i, powerups[i].active, powerups[i].picked_up, powerups[i].type, (float)powerups[i].rect.x, (float)powerups[i].rect.y}};
                         send_packet(udp_socket, peer, &p_packet);
-                        Packet state_packet = {PACKET_GAME_STATE, local_player_id, .state = {local_player.lives, local_score, local_player.speed, local_player.damage}};
-                        send_packet(udp_socket, peer, &state_packet);
                     }
                     SDL_Log("Player %d picked up powerup %d (type=%d)", local_player_id, i, powerups[i].type);
                 }
@@ -599,6 +619,8 @@ int main(int argc, char *argv[])
         }
 
         update_effects(&local_effects, &local_player.speed, &local_player.damage, now, powerups);
+        if (is_multiplayer)
+            update_effects(&remote_effects, &remote_player.speed, &remote_player.damage, now, powerups);
 
         for (int i = 0; i < MAX_BULLETS; i++)
         {
@@ -679,10 +701,10 @@ int main(int argc, char *argv[])
 
         draw_player(renderer, &local_player);
         if (is_multiplayer)
-        {
             draw_player(renderer, &remote_player);
-        }
         draw_powerup_bars(renderer, &local_player, powerups, now);
+        if (is_multiplayer)
+            draw_powerup_bars(renderer, &remote_player, powerups, now);
         for (int i = 0; i < MAX_MOBS; i++)
         {
             if (mobs[i].active)
@@ -789,7 +811,7 @@ void send_packet(UDPsocket socket, IPaddress peer, Packet *packet)
     SDLNet_FreePacket(udp_packet);
 }
 
-void handle_network(UDPsocket socket, Player *remote_player, Bullet bullets[], Mob mobs[], Powerup powerups[], int *remote_lives, int *remote_score, float *remote_speed, int *remote_damage, ActiveEffects *remote_effects)
+void handle_network(UDPsocket socket, Player *local_player, int *local_score, Player *remote_player, Bullet bullets[], Mob mobs[], Powerup powerups[], int *remote_lives, int *remote_score, float *remote_speed, int *remote_damage, ActiveEffects *local_effects, ActiveEffects *remote_effects)
 {
     UDPpacket *packet = SDLNet_AllocPacket(512);
     if (!packet)
@@ -800,7 +822,7 @@ void handle_network(UDPsocket socket, Player *remote_player, Bullet bullets[], M
     while (SDLNet_UDP_Recv(socket, packet))
     {
         Packet *p = (Packet *)packet->data;
-        if (p->id != local_player_id)
+        if (p->id != local_player_id || p->type == PACKET_GAME_STATE) // Process all GAME_STATE packets
         {
             SDL_Log("Received packet type %d from player %d at 0x%08X:%d", p->type, p->id, packet->address.host, packet->address.port);
             switch (p->type)
@@ -846,7 +868,7 @@ void handle_network(UDPsocket socket, Player *remote_player, Bullet bullets[], M
                 }
                 break;
             case PACKET_POWERUP_UPDATE:
-                if (!is_host && p->powerup.index >= 0 && p->powerup.index < MAX_POWERUPS)
+                if (p->powerup.index >= 0 && p->powerup.index < MAX_POWERUPS)
                 {
                     powerups[p->powerup.index].active = p->powerup.active;
                     powerups[p->powerup.index].picked_up = p->powerup.picked_up;
@@ -855,271 +877,76 @@ void handle_network(UDPsocket socket, Player *remote_player, Bullet bullets[], M
                     powerups[p->powerup.index].rect.y = (int)p->powerup.y;
                     powerups[p->powerup.index].rect.w = 32;
                     powerups[p->powerup.index].rect.h = 32;
-                    if (p->powerup.picked_up && p->id != local_player_id)
+                    if (p->powerup.picked_up && !powerups[p->powerup.index].sound_played)
                     {
-                        powerups[p->powerup.index].pickup_time = SDL_GetTicks();
+                        switch (powerups[p->powerup.index].type)
+                        {
+                        case POWERUP_EXTRA_LIFE:
+                            play_sound(SOUND_EXTRALIFE);
+                            break;
+                        case POWERUP_SPEED_BOOST:
+                            play_sound(SOUND_SPEED);
+                            break;
+                        case POWERUP_FREEZE_ENEMIES:
+                            play_sound(SOUND_FREEZE);
+                            break;
+                        case POWERUP_DOUBLE_DAMAGE:
+                            play_sound(SOUND_DAMAGE);
+                            break;
+                        }
+                        powerups[p->powerup.index].sound_played = true;
+                    }
+                    if (is_host && p->id == 1 && p->powerup.picked_up)
+                    {
+                        apply_powerup_effect(&powerups[p->powerup.index], remote_player, remote_effects, SDL_GetTicks());
+                        Packet state_packet = {PACKET_GAME_STATE, 1, .state = {remote_player->lives, *remote_score, remote_player->speed, remote_player->damage}};
+                        send_packet(socket, packet->address, &state_packet);
                     }
                     SDL_Log("Updated powerup %d: active=%d, picked_up=%d, x=%d, y=%d, type=%d", p->powerup.index, powerups[p->powerup.index].active, powerups[p->powerup.index].picked_up, powerups[p->powerup.index].rect.x, powerups[p->powerup.index].rect.y, powerups[p->powerup.index].type);
                 }
                 break;
             case PACKET_GAME_STATE:
-                *remote_lives = p->state.lives;
-                *remote_score = p->state.score;
-                *remote_speed = p->state.speed;
-                *remote_damage = p->state.damage;
-                SDL_Log("Updated remote state: lives=%d, score=%d, speed=%.2f, damage=%d", *remote_lives, *remote_score, *remote_speed, *remote_damage);
+                if (p->id == 0) // Host's state
+                {
+                    if (is_host)
+                    {
+                        local_player->lives = p->state.lives;
+                        *local_score = p->state.score;
+                        local_player->speed = p->state.speed;
+                        local_player->damage = p->state.damage;
+                    }
+                    else
+                    {
+                        *remote_lives = p->state.lives;
+                        *remote_score = p->state.score;
+                        *remote_speed = p->state.speed;
+                        *remote_damage = p->state.damage;
+                    }
+                    SDL_Log("Updated player 0 state: lives=%d, score=%d, speed=%.2f, damage=%d", p->state.lives, p->state.score, p->state.speed, p->state.damage);
+                }
+                else if (p->id == 1) // Client's state
+                {
+                    if (is_host)
+                    {
+                        *remote_lives = p->state.lives;
+                        *remote_score = p->state.score;
+                        *remote_speed = p->state.speed;
+                        *remote_damage = p->state.damage;
+                    }
+                    else
+                    {
+                        local_player->lives = p->state.lives;
+                        *local_score = p->state.score;
+                        local_player->speed = p->state.speed;
+                        local_player->damage = p->state.damage;
+                    }
+                    SDL_Log("Updated player 1 state: lives=%d, score=%d, speed=%.2f, damage=%d", p->state.lives, p->state.score, p->state.speed, p->state.damage);
+                }
                 break;
             }
         }
     }
     SDLNet_FreePacket(packet);
-}
-
-int showIPInputScreen(SDL_Renderer *renderer, char *ip_buffer, int buffer_size)
-{
-    TTF_Font *font = TTF_OpenFont("shlop.ttf", 28);
-    if (!font)
-    {
-        SDL_Log("Font load error: %s", TTF_GetError());
-        return -1;
-    }
-
-    SDL_Event event;
-    bool done = false;
-    char input_text[16] = {0};
-    int cursor = 0;
-    SDL_Rect confirm_button = {SCREEN_WIDTH / 2 - 100, 400, 200, 50};
-
-    SDL_StartTextInput();
-    while (!done)
-    {
-        while (SDL_PollEvent(&event))
-        {
-            if (event.type == SDL_QUIT)
-            {
-                SDL_StopTextInput();
-                TTF_CloseFont(font);
-                return -1;
-            }
-            if (event.type == SDL_KEYDOWN)
-            {
-                if (event.key.keysym.sym == SDLK_RETURN && cursor > 0)
-                {
-                    if (is_valid_ip(input_text))
-                    {
-                        strncpy(ip_buffer, input_text, buffer_size);
-                        done = true;
-                    }
-                }
-                else if (event.key.keysym.sym == SDLK_BACKSPACE && cursor > 0)
-                {
-                    input_text[--cursor] = '\0';
-                }
-                else if (event.key.keysym.sym == SDLK_ESCAPE)
-                {
-                    SDL_StopTextInput();
-                    TTF_CloseFont(font);
-                    return -1;
-                }
-            }
-            if (event.type == SDL_TEXTINPUT && cursor < sizeof(input_text) - 1)
-            {
-                if (strchr("0123456789.", event.text.text[0]))
-                {
-                    input_text[cursor++] = event.text.text[0];
-                    input_text[cursor] = '\0';
-                }
-            }
-            if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
-            {
-                int mx = event.button.x, my = event.button.y;
-                if (mx >= confirm_button.x && mx <= confirm_button.x + confirm_button.w &&
-                    my >= confirm_button.y && my <= confirm_button.y + confirm_button.h && cursor > 0)
-                {
-                    if (is_valid_ip(input_text))
-                    {
-                        strncpy(ip_buffer, input_text, buffer_size);
-                        done = true;
-                    }
-                }
-            }
-        }
-
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
-
-        SDL_Color white = {255, 255, 255, 255};
-        SDL_Surface *prompt_surface = TTF_RenderText_Blended(font, "Enter Host IP (e.g., 127.0.0.1):", white);
-        if (prompt_surface)
-        {
-            SDL_Texture *prompt_texture = SDL_CreateTextureFromSurface(renderer, prompt_surface);
-            SDL_Rect prompt_rect = {SCREEN_WIDTH / 2 - prompt_surface->w / 2, 200, prompt_surface->w, prompt_surface->h};
-            SDL_RenderCopy(renderer, prompt_texture, NULL, &prompt_rect);
-            SDL_FreeSurface(prompt_surface);
-            SDL_DestroyTexture(prompt_texture);
-        }
-
-        SDL_Surface *input_surface = TTF_RenderText_Blended(font, input_text[0] ? input_text : " ", white);
-        if (input_surface)
-        {
-            SDL_Texture *input_texture = SDL_CreateTextureFromSurface(renderer, input_surface);
-            SDL_Rect input_rect = {SCREEN_WIDTH / 2 - input_surface->w / 2, 250, input_surface->w, input_surface->h};
-            SDL_RenderCopy(renderer, input_texture, NULL, &input_rect);
-            SDL_FreeSurface(input_surface);
-            SDL_DestroyTexture(input_texture);
-        }
-
-        SDL_SetRenderDrawColor(renderer, 180, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &confirm_button);
-        SDL_Surface *confirm_surface = TTF_RenderText_Blended(font, "Confirm", white);
-        if (confirm_surface)
-        {
-            SDL_Texture *confirm_texture = SDL_CreateTextureFromSurface(renderer, confirm_surface);
-            SDL_Rect confirm_text_rect = {
-                confirm_button.x + (confirm_button.w - confirm_surface->w) / 2,
-                confirm_button.y + (confirm_button.h - confirm_surface->h) / 2,
-                confirm_surface->w,
-                confirm_surface->h};
-            SDL_RenderCopy(renderer, confirm_texture, NULL, &confirm_text_rect);
-            SDL_FreeSurface(confirm_surface);
-            SDL_DestroyTexture(confirm_texture);
-        }
-
-        if (cursor > 0 && !is_valid_ip(input_text))
-        {
-            SDL_Surface *error_surface = TTF_RenderText_Blended(font, "Invalid IP format", white);
-            if (error_surface)
-            {
-                SDL_Texture *error_texture = SDL_CreateTextureFromSurface(renderer, error_surface);
-                SDL_Rect error_rect = {SCREEN_WIDTH / 2 - error_surface->w / 2, 300, error_surface->w, error_surface->h};
-                SDL_RenderCopy(renderer, error_texture, NULL, &error_rect);
-                SDL_FreeSurface(error_surface);
-                SDL_DestroyTexture(error_texture);
-            }
-        }
-
-        SDL_RenderPresent(renderer);
-        SDL_Delay(16);
-    }
-
-    SDL_StopTextInput();
-    TTF_CloseFont(font);
-    return 0;
-}
-
-int showConnectionScreen(SDL_Renderer *renderer, UDPsocket socket, IPaddress *peer, bool is_host)
-{
-    TTF_Font *font = TTF_OpenFont("shlop.ttf", 28);
-    if (!font)
-    {
-        SDL_Log("Font load error: %s", TTF_GetError());
-        return -1;
-    }
-
-    SDL_Color white = {255, 255, 255, 255};
-    SDL_Event event;
-    bool connected = false;
-    Uint32 start_time = SDL_GetTicks();
-    Uint32 last_handshake_time = 0;
-    UDPpacket *packet = SDLNet_AllocPacket(512);
-    if (!packet)
-    {
-        SDL_Log("Failed to allocate packet");
-        TTF_CloseFont(font);
-        return -1;
-    }
-
-    const char *error_message = NULL;
-    while (!connected && (SDL_GetTicks() - start_time) < CONNECTION_TIMEOUT)
-    {
-        while (SDL_PollEvent(&event))
-        {
-            if (event.type == SDL_QUIT)
-            {
-                SDLNet_FreePacket(packet);
-                TTF_CloseFont(font);
-                return -1;
-            }
-        }
-
-        Uint32 now = SDL_GetTicks();
-        if (is_host)
-        {
-            if (SDLNet_UDP_Recv(socket, packet))
-            {
-                Packet *p = (Packet *)packet->data;
-                if (p->type == PACKET_HANDSHAKE && p->id == 1 && p->handshake.handshake == 0)
-                {
-                    peer->host = packet->address.host;
-                    peer->port = packet->address.port;
-                    Packet ack = {PACKET_HANDSHAKE, 0, .handshake = {1}};
-                    send_packet(socket, *peer, &ack);
-                    connected = true;
-                    SDL_Log("Connected to client at 0x%08X:%d", peer->host, peer->port);
-                }
-            }
-        }
-        else
-        {
-            if (now - last_handshake_time >= 50)
-            {
-                Packet handshake = {PACKET_HANDSHAKE, 1, .handshake = {0}};
-                send_packet(socket, *peer, &handshake);
-                last_handshake_time = now;
-            }
-            if (SDLNet_UDP_Recv(socket, packet))
-            {
-                Packet *p = (Packet *)packet->data;
-                if (p->type == PACKET_HANDSHAKE && p->id == 0 && p->handshake.handshake == 1)
-                {
-                    connected = true;
-                    SDL_Log("Connected to host at 0x%08X:%d", peer->host, peer->port);
-                }
-            }
-        }
-
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
-        const char *message = is_host ? "Waiting for client..." : "Connecting to host...";
-        SDL_Surface *surface = TTF_RenderText_Blended(font, message, white);
-        if (surface)
-        {
-            SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-            SDL_Rect textRect = {SCREEN_WIDTH / 2 - surface->w / 2, SCREEN_HEIGHT / 2 - surface->h / 2, surface->w, surface->h};
-            SDL_RenderCopy(renderer, texture, NULL, &textRect);
-            SDL_FreeSurface(surface);
-            SDL_DestroyTexture(texture);
-        }
-        SDL_RenderPresent(renderer);
-        SDL_Delay(16);
-    }
-
-    if (!connected)
-    {
-        if (!is_host && peer->host == 0)
-            error_message = "Invalid host IP address";
-        else
-            error_message = "Connection timed out";
-
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
-        SDL_Surface *surface = TTF_RenderText_Blended(font, error_message, white);
-        if (surface)
-        {
-            SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-            SDL_Rect textRect = {SCREEN_WIDTH / 2 - surface->w / 2, SCREEN_HEIGHT / 2 - surface->h / 2, surface->w, surface->h};
-            SDL_RenderCopy(renderer, texture, NULL, &textRect);
-            SDL_FreeSurface(surface);
-            SDL_DestroyTexture(texture);
-        }
-        SDL_RenderPresent(renderer);
-        SDL_Delay(2000);
-        SDL_Log("%s after %d ms", error_message, CONNECTION_TIMEOUT);
-    }
-
-    SDLNet_FreePacket(packet);
-    TTF_CloseFont(font);
-    return connected ? 0 : -1;
 }
 
 int showMenu(SDL_Renderer *renderer, SDL_Window *window)
@@ -1535,4 +1362,251 @@ int showGameOver(SDL_Renderer *renderer)
     TTF_CloseFont(optionFont);
     TTF_CloseFont(titleFont);
     return -1;
+}
+
+int showIPInputScreen(SDL_Renderer *renderer, char *ip_buffer, int buffer_size)
+{
+    TTF_Font *font = TTF_OpenFont("shlop.ttf", 28);
+    if (!font)
+    {
+        SDL_Log("Font load error: %s", TTF_GetError());
+        return -1;
+    }
+
+    SDL_Event event;
+    bool done = false;
+    char input_text[16] = {0};
+    int cursor = 0;
+    SDL_Rect confirm_button = {SCREEN_WIDTH / 2 - 100, 400, 200, 50};
+
+    SDL_StartTextInput();
+    while (!done)
+    {
+        while (SDL_PollEvent(&event))
+        {
+            if (event.type == SDL_QUIT)
+            {
+                SDL_StopTextInput();
+                TTF_CloseFont(font);
+                return -1;
+            }
+            if (event.type == SDL_KEYDOWN)
+            {
+                if (event.key.keysym.sym == SDLK_RETURN && cursor > 0)
+                {
+                    if (is_valid_ip(input_text))
+                    {
+                        strncpy(ip_buffer, input_text, buffer_size);
+                        done = true;
+                    }
+                }
+                else if (event.key.keysym.sym == SDLK_BACKSPACE && cursor > 0)
+                {
+                    input_text[--cursor] = '\0';
+                }
+                else if (event.key.keysym.sym == SDLK_ESCAPE)
+                {
+                    SDL_StopTextInput();
+                    TTF_CloseFont(font);
+                    return -1;
+                }
+            }
+            if (event.type == SDL_TEXTINPUT && cursor < sizeof(input_text) - 1)
+            {
+                if (strchr("0123456789.", event.text.text[0]))
+                {
+                    input_text[cursor++] = event.text.text[0];
+                    input_text[cursor] = '\0';
+                }
+            }
+            if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
+            {
+                int mx = event.button.x, my = event.button.y;
+                if (mx >= confirm_button.x && mx <= confirm_button.x + confirm_button.w &&
+                    my >= confirm_button.y && my <= confirm_button.y + confirm_button.h && cursor > 0)
+                {
+                    if (is_valid_ip(input_text))
+                    {
+                        strncpy(ip_buffer, input_text, buffer_size);
+                        done = true;
+                    }
+                }
+            }
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        SDL_Color white = {255, 255, 255, 255};
+        SDL_Surface *prompt_surface = TTF_RenderText_Blended(font, "Enter Host IP (e.g., 127.0.0.1):", white);
+        if (prompt_surface)
+        {
+            SDL_Texture *prompt_texture = SDL_CreateTextureFromSurface(renderer, prompt_surface);
+            SDL_Rect prompt_rect = {SCREEN_WIDTH / 2 - prompt_surface->w / 2, 200, prompt_surface->w, prompt_surface->h};
+            SDL_RenderCopy(renderer, prompt_texture, NULL, &prompt_rect);
+            SDL_FreeSurface(prompt_surface);
+            SDL_DestroyTexture(prompt_texture);
+        }
+
+        SDL_Surface *input_surface = TTF_RenderText_Blended(font, input_text[0] ? input_text : " ", white);
+        if (input_surface)
+        {
+            SDL_Texture *input_texture = SDL_CreateTextureFromSurface(renderer, input_surface);
+            SDL_Rect input_rect = {SCREEN_WIDTH / 2 - input_surface->w / 2, 250, input_surface->w, input_surface->h};
+            SDL_RenderCopy(renderer, input_texture, NULL, &input_rect);
+            SDL_FreeSurface(input_surface);
+            SDL_DestroyTexture(input_texture);
+        }
+
+        SDL_SetRenderDrawColor(renderer, 180, 0, 0, 255);
+        SDL_RenderFillRect(renderer, &confirm_button);
+        SDL_Surface *confirm_surface = TTF_RenderText_Blended(font, "Confirm", white);
+        if (confirm_surface)
+        {
+            SDL_Texture *confirm_texture = SDL_CreateTextureFromSurface(renderer, confirm_surface);
+            SDL_Rect confirm_text_rect = {
+                confirm_button.x + (confirm_button.w - confirm_surface->w) / 2,
+                confirm_button.y + (confirm_button.h - confirm_surface->h) / 2,
+                confirm_surface->w,
+                confirm_surface->h};
+            SDL_RenderCopy(renderer, confirm_texture, NULL, &confirm_text_rect);
+            SDL_FreeSurface(confirm_surface);
+            SDL_DestroyTexture(confirm_texture);
+        }
+
+        if (cursor > 0 && !is_valid_ip(input_text))
+        {
+            SDL_Surface *error_surface = TTF_RenderText_Blended(font, "Invalid IP format", white);
+            if (error_surface)
+            {
+                SDL_Texture *error_texture = SDL_CreateTextureFromSurface(renderer, error_surface);
+                SDL_Rect error_rect = {SCREEN_WIDTH / 2 - error_surface->w / 2, 300, error_surface->w, error_surface->h};
+                SDL_RenderCopy(renderer, error_texture, NULL, &error_rect);
+                SDL_FreeSurface(error_surface);
+                SDL_DestroyTexture(error_texture);
+            }
+        }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+
+    SDL_StopTextInput();
+    TTF_CloseFont(font);
+    return 0;
+}
+
+int showConnectionScreen(SDL_Renderer *renderer, UDPsocket socket, IPaddress *peer, bool is_host)
+{
+    TTF_Font *font = TTF_OpenFont("shlop.ttf", 28);
+    if (!font)
+    {
+        SDL_Log("Font load error: %s", TTF_GetError());
+        return -1;
+    }
+
+    SDL_Color white = {255, 255, 255, 255};
+    SDL_Event event;
+    bool connected = false;
+    Uint32 start_time = SDL_GetTicks();
+    Uint32 last_handshake_time = 0;
+    UDPpacket *packet = SDLNet_AllocPacket(512);
+    if (!packet)
+    {
+        SDL_Log("Failed to allocate packet");
+        TTF_CloseFont(font);
+        return -1;
+    }
+
+    const char *error_message = NULL;
+    while (!connected && (SDL_GetTicks() - start_time) < CONNECTION_TIMEOUT)
+    {
+        while (SDL_PollEvent(&event))
+        {
+            if (event.type == SDL_QUIT)
+            {
+                SDLNet_FreePacket(packet);
+                TTF_CloseFont(font);
+                return -1;
+            }
+        }
+
+        Uint32 now = SDL_GetTicks();
+        if (is_host)
+        {
+            if (SDLNet_UDP_Recv(socket, packet))
+            {
+                Packet *p = (Packet *)packet->data;
+                if (p->type == PACKET_HANDSHAKE && p->id == 1 && p->handshake.handshake == 0)
+                {
+                    peer->host = packet->address.host;
+                    peer->port = packet->address.port;
+                    Packet ack = {PACKET_HANDSHAKE, 0, .handshake = {1}};
+                    send_packet(socket, *peer, &ack);
+                    connected = true;
+                    SDL_Log("Connected to client at 0x%08X:%d", peer->host, peer->port);
+                }
+            }
+        }
+        else
+        {
+            if (now - last_handshake_time >= 50)
+            {
+                Packet handshake = {PACKET_HANDSHAKE, 1, .handshake = {0}};
+                send_packet(socket, *peer, &handshake);
+                last_handshake_time = now;
+            }
+            if (SDLNet_UDP_Recv(socket, packet))
+            {
+                Packet *p = (Packet *)packet->data;
+                if (p->type == PACKET_HANDSHAKE && p->id == 0 && p->handshake.handshake == 1)
+                {
+                    connected = true;
+                    SDL_Log("Connected to host at 0x%08X:%d", peer->host, peer->port);
+                }
+            }
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        const char *message = is_host ? "Waiting for client..." : "Connecting to host...";
+        SDL_Surface *surface = TTF_RenderText_Blended(font, message, white);
+        if (surface)
+        {
+            SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_Rect textRect = {SCREEN_WIDTH / 2 - surface->w / 2, SCREEN_HEIGHT / 2 - surface->h / 2, surface->w, surface->h};
+            SDL_RenderCopy(renderer, texture, NULL, &textRect);
+            SDL_FreeSurface(surface);
+            SDL_DestroyTexture(texture);
+        }
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+
+    if (!connected)
+    {
+        if (!is_host && peer->host == 0)
+            error_message = "Invalid host IP address";
+        else
+            error_message = "Connection timed out";
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        SDL_Surface *surface = TTF_RenderText_Blended(font, error_message, white);
+        if (surface)
+        {
+            SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_Rect textRect = {SCREEN_WIDTH / 2 - surface->w / 2, SCREEN_HEIGHT / 2 - surface->h / 2, surface->w, surface->h};
+            SDL_RenderCopy(renderer, texture, NULL, &textRect);
+            SDL_FreeSurface(surface);
+            SDL_DestroyTexture(texture);
+        }
+        SDL_RenderPresent(renderer);
+        SDL_Delay(2000);
+        SDL_Log("%s after %d ms", error_message, CONNECTION_TIMEOUT);
+    }
+
+    SDLNet_FreePacket(packet);
+    TTF_CloseFont(font);
+    return connected ? 0 : -1;
 }
