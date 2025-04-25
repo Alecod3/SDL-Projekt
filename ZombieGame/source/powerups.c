@@ -108,12 +108,14 @@ void apply_powerup_effect(Powerup *powerup, Player *player, ActiveEffects *effec
         }
         break;
     case POWERUP_SPEED_BOOST:
-        player->speed *= 2.0f;
+        if (!effects->speed_active)
+            player->speed *= 2.0f;
         effects->speed_active = true;
         effects->speed_start_time = now;
         break;
     case POWERUP_DOUBLE_DAMAGE:
-        player->damage *= 2;
+        if (!effects->speed_active)
+            player->damage *= 2;
         effects->damage_active = true;
         effects->damage_start_time = now;
         break;
@@ -125,7 +127,6 @@ void apply_powerup_effect(Powerup *powerup, Player *player, ActiveEffects *effec
     powerup->picked_up = true;
     powerup->pickup_time = now;
 }
-
 void update_effects(ActiveEffects *effects, float *player_speed, int *player_damage, Uint32 current_time, Powerup powerups[])
 {
     if (effects->speed_active && (current_time - effects->speed_start_time) >= POWERUP_SPEED_DURATION)
