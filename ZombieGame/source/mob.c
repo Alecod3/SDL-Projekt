@@ -119,8 +119,8 @@ void update_mob(Mob *mob, SDL_Rect local_player_rect, SDL_Rect remote_player_rec
 
         SDL_Rect new_pos = mob->rect;
 
-        move_x = 0;
-        move_y = 0;
+        // move_x = 0;
+        // move_y = 0;
         new_pos.x += move_x;
         new_pos.y += move_y;
 
