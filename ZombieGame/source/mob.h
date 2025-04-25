@@ -29,7 +29,7 @@ typedef struct
 // Funktioner för att hantera mobs
 Mob create_mob(int x, int y, int size, int type, int health);
 bool check_mob_collision(SDL_Rect *mob_rect, Mob mobs[], int mob_index);
-void update_mob(Mob *mob, SDL_Rect player_rect);
+void update_mob(Mob *mob, SDL_Rect local_player_rect, SDL_Rect remote_player_rect, bool is_multiplayer);
 void draw_mob(SDL_Renderer *renderer, const Mob *mob, SDL_Rect player_rect);
 
 extern SDL_Texture *tex_mob;

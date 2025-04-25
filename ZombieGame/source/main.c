@@ -432,10 +432,26 @@ int main(int argc, char *argv[])
                 if (mobs[i].active)
                 {
                     if (!local_effects.freeze_active && !remote_effects.freeze_active)
-                        update_mob(&mobs[i], local_player.rect);
+                        update_mob(&mobs[i], local_player.rect, remote_player.rect, is_multiplayer);
                     if (mobs[i].attacking && now - mobs[i].last_attack_time >= mobs[i].attack_interval)
                     {
-                        local_player.lives -= (mobs[i].type == 3) ? 2 : 1;
+                        // Determine which player is closer to apply damage
+                        float dx_local = (local_player.rect.x + local_player.rect.w / 2) - (mobs[i].rect.x + mobs[i].rect.w / 2);
+                        float dy_local = (local_player.rect.y + local_player.rect.h / 2) - (mobs[i].rect.y + mobs[i].rect.h / 2);
+                        float dist_local = sqrtf(dx_local * dx_local + dy_local * dy_local);
+
+                        float dx_remote = (remote_player.rect.x + remote_player.rect.w / 2) - (mobs[i].rect.x + mobs[i].rect.w / 2);
+                        float dy_remote = (remote_player.rect.y + remote_player.rect.h / 2) - (mobs[i].rect.y + mobs[i].rect.h / 2);
+                        float dist_remote = sqrtf(dx_remote * dx_remote + dy_remote * dy_remote);
+
+                        if (is_multiplayer && dist_remote < dist_local)
+                        {
+                            remote_player.lives -= (mobs[i].type == 3) ? 2 : 1;
+                        }
+                        else
+                        {
+                            local_player.lives -= (mobs[i].type == 3) ? 2 : 1;
+                        }
                         mobs[i].last_attack_time = now;
                         if (is_multiplayer)
                         {
