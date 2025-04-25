@@ -551,6 +551,7 @@ int main(int argc, char *argv[])
                     {
                         powerups[i].active = false;
                         powerups[i].picked_up = false;
+                        powerups[i].sound_played = false;
                         powerups[i] = create_powerup(rand() % 4, rand() % (SCREEN_WIDTH - 32), rand() % (SCREEN_HEIGHT - 32));
                         if (is_multiplayer)
                         {
@@ -581,14 +582,20 @@ int main(int argc, char *argv[])
                 bool local_collision = SDL_HasIntersection(&powerups[i].rect, &local_player.rect);
                 if (local_collision)
                 {
-                    powerups[i].picked_up = true; // Mark as picked up locally for both host and client
-                    powerups[i].pickup_time = now;
                     if (is_host)
                     {
                         // Host applies the effect immediately for its local player
+                        powerups[i].picked_up = true;
+                        powerups[i].pickup_time = now;
                         apply_powerup_effect(&powerups[i], &local_player, &local_effects, now);
                         Packet state_packet = {PACKET_GAME_STATE, local_player_id, .state = {local_player.lives, local_score, local_player.speed, local_player.damage}};
                         send_packet(udp_socket, peer, &state_packet);
+                    }
+                    else
+                    {
+                        // Client notifies host of pickup attempt
+                        powerups[i].picked_up = true; // Mark locally for rendering
+                        powerups[i].pickup_time = now;
                     }
                     if (!powerups[i].sound_played)
                     {
@@ -874,48 +881,43 @@ void handle_network(UDPsocket socket, Player *local_player, int *local_score, Pl
                 {
                     // Update powerup state
                     powerups[p->powerup.index].active = p->powerup.active;
+                    powerups[p->powerup.index].picked_up = p->powerup.picked_up;
                     powerups[p->powerup.index].type = p->powerup.type;
                     powerups[p->powerup.index].rect.x = (int)p->powerup.x;
                     powerups[p->powerup.index].rect.y = (int)p->powerup.y;
                     powerups[p->powerup.index].rect.w = 32;
                     powerups[p->powerup.index].rect.h = 32;
+                    powerups[p->powerup.index].pickup_time = SDL_GetTicks();
 
-                    // Only proceed if the powerup was not already picked up locally
-                    if (p->powerup.picked_up && !powerups[p->powerup.index].picked_up)
+                    if (p->powerup.picked_up && !powerups[p->powerup.index].sound_played)
                     {
-                        powerups[p->powerup.index].picked_up = true;
-                        powerups[p->powerup.index].pickup_time = SDL_GetTicks();
-
-                        if (!powerups[p->powerup.index].sound_played)
+                        switch (powerups[p->powerup.index].type)
                         {
-                            switch (powerups[p->powerup.index].type)
-                            {
-                            case POWERUP_EXTRA_LIFE:
-                                play_sound(SOUND_EXTRALIFE);
-                                break;
-                            case POWERUP_SPEED_BOOST:
-                                play_sound(SOUND_SPEED);
-                                break;
-                            case POWERUP_FREEZE_ENEMIES:
-                                play_sound(SOUND_FREEZE);
-                                break;
-                            case POWERUP_DOUBLE_DAMAGE:
-                                play_sound(SOUND_DAMAGE);
-                                break;
-                            }
-                            powerups[p->powerup.index].sound_played = true;
+                        case POWERUP_EXTRA_LIFE:
+                            play_sound(SOUND_EXTRALIFE);
+                            break;
+                        case POWERUP_SPEED_BOOST:
+                            play_sound(SOUND_SPEED);
+                            break;
+                        case POWERUP_FREEZE_ENEMIES:
+                            play_sound(SOUND_FREEZE);
+                            break;
+                        case POWERUP_DOUBLE_DAMAGE:
+                            play_sound(SOUND_DAMAGE);
+                            break;
                         }
+                        powerups[p->powerup.index].sound_played = true;
+                    }
 
-                        if (is_host && p->id == 1)
-                        {
-                            // Host applies effect for client’s pickup if powerup is still valid
-                            apply_powerup_effect(&powerups[p->powerup.index], remote_player, remote_effects, SDL_GetTicks());
-                            Packet state_packet = {PACKET_GAME_STATE, 1, .state = {remote_player->lives, *remote_score, remote_player->speed, remote_player->damage}};
-                            send_packet(socket, packet->address, &state_packet);
-                            // Broadcast the pickup to ensure all clients are synced
-                            Packet p_packet = {PACKET_POWERUP_UPDATE, 0, .powerup = {p->powerup.index, powerups[p->powerup.index].active, powerups[p->powerup.index].picked_up, powerups[p->powerup.index].type, (float)powerups[p->powerup.index].rect.x, (float)powerups[p->powerup.index].rect.y}};
-                            send_packet(socket, packet->address, &p_packet);
-                        }
+                    if (is_host && p->id == 1 && p->powerup.picked_up)
+                    {
+                        // Host applies effect for client's pickup
+                        apply_powerup_effect(&powerups[p->powerup.index], remote_player, remote_effects, SDL_GetTicks());
+                        Packet state_packet = {PACKET_GAME_STATE, 1, .state = {remote_player->lives, *remote_score, remote_player->speed, remote_player->damage}};
+                        send_packet(socket, packet->address, &state_packet);
+                        // Broadcast the pickup to ensure all clients are synced
+                        Packet p_packet = {PACKET_POWERUP_UPDATE, 0, .powerup = {p->powerup.index, powerups[p->powerup.index].active, powerups[p->powerup.index].picked_up, powerups[p->powerup.index].type, (float)powerups[p->powerup.index].rect.x, (float)powerups[p->powerup.index].rect.y}};
+                        send_packet(socket, packet->address, &p_packet);
                     }
                     SDL_Log("Updated powerup %d: active=%d, picked_up=%d, x=%d, y=%d, type=%d", p->powerup.index, powerups[p->powerup.index].active, powerups[p->powerup.index].picked_up, powerups[p->powerup.index].rect.x, powerups[p->powerup.index].rect.y, powerups[p->powerup.index].type);
                 }
@@ -935,6 +937,7 @@ void handle_network(UDPsocket socket, Player *local_player, int *local_score, Pl
                     remote_player->speed = p->state.speed;
                     remote_player->damage = p->state.damage;
                 }
+                SDL_Log("Updated player %d state: lives=%d, score=%d, speed=%.2f, damage=%d", p->id, p->state.lives, p->state.score, p->state.speed, p->state.damage);
                 break;
             }
         }
