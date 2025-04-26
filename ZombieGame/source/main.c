@@ -316,6 +316,7 @@ int main(int argc, char *argv[]) {
     tex_extraspeed   = IMG_LoadTexture(renderer, "resources/extraspeed.png");
     tex_doubledamage = IMG_LoadTexture(renderer, "resources/doubledamage.png");
     tex_freezeenemies = IMG_LoadTexture(renderer, "resources/freezeenemies.png");
+    tex_ammo = IMG_LoadTexture(renderer, "resources/ammo.png");
 
     tex_tiles = IMG_LoadTexture(renderer, "resources/tiles.png");
 if (!tex_tiles) {
