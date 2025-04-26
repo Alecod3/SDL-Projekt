@@ -377,7 +377,7 @@ if (!tex_mob) {
     
     Powerup powerups[MAX_POWERUPS];
     for (int i = 0; i < MAX_POWERUPS; i++) {
-        PowerupType t = rand() % 4;
+        PowerupType t = rand() % 5;
         int x = rand() % (SCREEN_WIDTH - 32);
         int y = rand() % (SCREEN_HEIGHT - 32);
         powerups[i] = create_powerup(t, x, y);
@@ -505,7 +505,7 @@ for (int i = 0; i < MAX_MOBS; i++) {
                             if (rand() % 4 == 0) { // 25% chans att en mob släpper en powerup vid död
                                 for (int k = 0; k < MAX_POWERUPS; k++) {
                                     if (!powerups[k].active && !powerups[k].picked_up) {
-                                        PowerupType t = rand() % 4;
+                                        PowerupType t = rand() % 5;
                                         powerups[k] = create_powerup(t, mobs[j].rect.x, mobs[j].rect.y);
                                         break;
                                     }
@@ -552,7 +552,7 @@ for (int i = 0; i < MAX_MOBS; i++) {
         if (now - last_powerup_spawn_time >= 5000) {
             for (int i = 0; i < MAX_POWERUPS; i++) {
                 if (!powerups[i].active) {
-                    PowerupType t = rand() % 3;
+                    PowerupType t = rand() % 5;
                     int x = rand() % (SCREEN_WIDTH - 32);
                     int y = rand() % (SCREEN_HEIGHT - 32);
                     powerups[i] = create_powerup(t, x, y);
