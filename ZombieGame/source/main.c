@@ -277,7 +277,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    
     SDL_Window *window = SDL_CreateWindow("Zombie Game",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
@@ -566,7 +565,7 @@ for (int i = 0; i < MAX_MOBS; i++) {
         
         // Hantera kollisioner och effekter för powerups
         for (int i = 0; i < MAX_POWERUPS; i++) {
-            check_powerup_collision(&powerups[i], player.rect, &player.lives, &player.speed, &player.damage, now, &effects);
+            check_powerup_collision(&powerups[i], player.rect, &player.lives, &player.speed, &player.damage, &player.ammo, now, &effects);
             if (powerups[i].picked_up && !powerups[i].sound_played) {
                 switch(powerups[i].type){
                     case POWERUP_EXTRA_LIFE:
