@@ -359,7 +359,7 @@ if (!tex_mob) {
     srand((unsigned int)time(NULL));
     
     // Skapa spelaren via Player-ADT; DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE och MAX_HEALTH ska vara definierade (här antas de komma från powerups.h)
-    Player player = create_player(SCREEN_WIDTH/2, SCREEN_HEIGHT/2, PLAYER_SIZE, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
+    Player player = create_player(SCREEN_WIDTH/2, SCREEN_HEIGHT/2, PLAYER_SIZE, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH, AMMO);
     
     // Skapa bullets, mobs och powerups
     Bullet bullets[MAX_BULLETS] = {0};
