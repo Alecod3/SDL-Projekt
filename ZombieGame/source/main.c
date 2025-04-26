@@ -632,6 +632,21 @@ for (int i = 0; i < MAX_MOBS; i++) {
         SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
         SDL_Rect healthBar = {SCREEN_WIDTH - HEALTH_BAR_WIDTH - 10, 10, (HEALTH_BAR_WIDTH * player.lives) / MAX_HEALTH, HEALTH_BAR_HEIGHT};
         SDL_RenderFillRect(renderer, &healthBar);
+
+        char ammoText[32];
+        sprintf(ammoText, "Ammo: %d", player.ammo);
+        TTF_Font* ammoFont = TTF_OpenFont("shlop.ttf", 24);
+
+        if (ammoFont) {
+            SDL_Color white = {255, 255, 255};
+            SDL_Surface* ammoSurface = TTF_RenderText_Blended(ammoFont, ammoText, white);
+            SDL_Texture* ammoTexture = SDL_CreateTextureFromSurface(renderer, ammoSurface);
+            SDL_Rect ammoRect = {10, 10, ammoSurface->w, ammoSurface->h};
+            SDL_RenderCopy(renderer, ammoTexture, NULL, &ammoRect);
+            SDL_FreeSurface(ammoSurface);
+            SDL_DestroyTexture(ammoTexture);
+            TTF_CloseFont(ammoFont);
+        }
         
         // Skriver ut score och lives på konsolen
         printf("Score: %d | Lives: %d\n", score, player.lives);
@@ -642,6 +657,7 @@ for (int i = 0; i < MAX_MOBS; i++) {
     
     // Rensa upp resurser
     SDL_DestroyTexture(tex_extralife);
+    SDL_DestroyTexture(tex_ammo);
     SDL_DestroyTexture(tex_extraspeed);
     SDL_DestroyTexture(tex_doubledamage);
     SDL_DestroyTexture(tex_player);
