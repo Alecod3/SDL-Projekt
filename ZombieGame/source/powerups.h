@@ -14,7 +14,8 @@ typedef enum {
     POWERUP_EXTRA_LIFE,
     POWERUP_SPEED_BOOST,
     POWERUP_DOUBLE_DAMAGE,
-    POWERUP_FREEZE_ENEMIES
+    POWERUP_FREEZE_ENEMIES,
+    POWERUP_AMMO
 } PowerupType;
 
 typedef struct {
