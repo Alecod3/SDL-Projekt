@@ -348,7 +348,7 @@ if (!tex_mob) {
     return 1;
 }
 
-    if (!tex_extralife || !tex_extraspeed || !tex_doubledamage) {
+    if (!tex_extralife || !tex_ammo || !tex_extraspeed || !tex_doubledamage || !tex_freezeenemies) {
         SDL_Log("Kunde inte ladda in powerup-texturer: %s", SDL_GetError());
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
