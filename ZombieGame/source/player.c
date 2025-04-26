@@ -6,7 +6,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-Player create_player(int x, int y, int size, int speed, int damage, int lives) {
+Player create_player(int x, int y, int size, int speed, int damage, int lives, int ammo) {
     Player p;
     p.rect.x = x;
     p.rect.y = y;
@@ -15,6 +15,7 @@ Player create_player(int x, int y, int size, int speed, int damage, int lives) {
     p.speed = speed;
     p.damage = damage;
     p.lives = lives;
+    p.ammo = ammo;
     return p;
 }
 
