@@ -31,7 +31,7 @@ Powerup create_powerup(PowerupType type, int x, int y) {
     return p;
 }
 
-void check_powerup_collision(Powerup* p, SDL_Rect player, int* lives, int* player_speed, int* player_damage, Uint32 current_time, ActiveEffects* effects) {
+void check_powerup_collision(Powerup* p, SDL_Rect player, int* lives, int* player_speed, int* player_damage, int* player_ammo, Uint32 current_time, ActiveEffects* effects) {
     if (!p->active) return;
 
     SDL_Rect r = { p->rect.x, p->rect.y, p->rect.w, p->rect.h };
