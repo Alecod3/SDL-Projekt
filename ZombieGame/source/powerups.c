@@ -27,6 +27,8 @@ Powerup create_powerup(PowerupType type, int x, int y) {
         p.duration = 0;
     } else if (type == POWERUP_FREEZE_ENEMIES) {
         p.duration = 3000; // 3 sekunder i millisekunder
+    } else if (type == POWERUP_AMMO) {
+        p.duration = 0;
     }
     p.sound_played = false;
     return p;
@@ -44,6 +46,11 @@ void check_powerup_collision(Powerup* p, SDL_Rect player, int* lives, int* playe
         switch (p->type) {
             case POWERUP_EXTRA_LIFE:
                 *lives = (*lives < MAX_HEALTH) ? *lives + 1 : *lives;
+                break;
+            case POWERUP_AMMO:
+                *player_ammo += 10;
+                if (*player_ammo > MAX_AMMO)
+                    *player_ammo = MAX_AMMO;
                 break;
             case POWERUP_SPEED_BOOST:
                 *player_speed = DEFAULT_PLAYER_SPEED * 2;
