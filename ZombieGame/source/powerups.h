@@ -4,6 +4,8 @@
 #define DEFAULT_PLAYER_DAMAGE 1
 #define MAX_HEALTH 3
 #define MAX_POWERUPS 5
+#define AMMO 15
+#define MAX_AMMO 30
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
