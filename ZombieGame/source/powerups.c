@@ -6,6 +6,7 @@ SDL_Texture* tex_extralife = NULL;
 SDL_Texture* tex_extraspeed = NULL;
 SDL_Texture* tex_doubledamage = NULL;
 SDL_Texture* tex_freezeenemies = NULL;
+SDL_Texture* tex_ammo = NULL;
 
 // Skapar en ny powerup med position och typ
 Powerup create_powerup(PowerupType type, int x, int y) {

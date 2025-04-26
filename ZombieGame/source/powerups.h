@@ -48,5 +48,6 @@ extern SDL_Texture* tex_extralife;
 extern SDL_Texture* tex_extraspeed;
 extern SDL_Texture* tex_doubledamage;
 extern SDL_Texture* tex_freezeenemies;
+extern SDL_Texture* tex_ammo;
 
 #endif
