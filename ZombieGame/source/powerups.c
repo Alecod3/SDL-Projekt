@@ -136,6 +136,9 @@ void draw_powerup(SDL_Renderer* renderer, Powerup* p) {
         case POWERUP_EXTRA_LIFE:
             texture = tex_extralife;
             break;
+        case POWERUP_AMMO:
+            texture = tex_ammo;
+            break;
         case POWERUP_SPEED_BOOST:
             texture = tex_extraspeed;
             break;
