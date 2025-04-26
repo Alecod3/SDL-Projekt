@@ -15,6 +15,7 @@ typedef struct {
     int speed;
     int damage;
     int lives;
+    int ammo;
 } Player;
 
 // Funktioner för att skapa, uppdatera och rita spelaren
