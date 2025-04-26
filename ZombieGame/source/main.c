@@ -406,7 +406,7 @@ if (!tex_mob) {
                 // Skjut en bullet med spelarens damage
                 // (Skjutfunktionen finns i main, vi använder lokala bullets array)
                 for (int i = 0; i < MAX_BULLETS; i++) {
-                    if (!bullets[i].active) {
+                    if (!bullets[i].active && player.ammo > 0) {
                         bullets[i].rect.x = player.rect.x + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
                         bullets[i].rect.y = player.rect.y + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
                         bullets[i].rect.w = BULLET_SIZE;
@@ -417,6 +417,7 @@ if (!tex_mob) {
                         float length = sqrtf(dx * dx + dy * dy);
                         bullets[i].dx = BULLET_SPEED * (dx / length);
                         bullets[i].dy = BULLET_SPEED * (dy / length);
+                        player.ammo--;
                         play_sound(SOUND_SHOOT);
                         break;
                     }
@@ -432,7 +433,7 @@ if (!tex_mob) {
                 int mx, my;
                 SDL_GetMouseState(&mx, &my);
                 for (int i = 0; i < MAX_BULLETS; i++) {
-                    if (!bullets[i].active) {
+                    if (!bullets[i].active && player.ammo > 0) {
                         bullets[i].rect.x = player.rect.x + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
                         bullets[i].rect.y = player.rect.y + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
                         bullets[i].rect.w = BULLET_SIZE;
@@ -443,6 +444,7 @@ if (!tex_mob) {
                         float length = sqrtf(dx * dx + dy * dy);
                         bullets[i].dx = BULLET_SPEED * (dx / length);
                         bullets[i].dy = BULLET_SPEED * (dy / length);
+                        player.ammo--;
                         play_sound(SOUND_SHOOT);
                         break;
                     }
