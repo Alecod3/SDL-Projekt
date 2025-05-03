@@ -3,11 +3,10 @@
 #include <string.h>
 #include <stdbool.h>
 
-static IPaddress peerAddr;
-
-static UDPsocket netSocket = NULL;
-static UDPpacket *pktIn = NULL;
-static UDPpacket *pktOut = NULL;
+IPaddress peerAddr;
+UDPsocket netSocket = NULL;
+UDPpacket *pktIn = NULL;
+UDPpacket *pktOut = NULL;
 
 int network_init(NetMode mode, const char *server_ip)
 {
@@ -76,9 +75,103 @@ bool network_receive(int *out_x, int *out_y)
 
 void network_send(int x, int y)
 {
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_POS;
+    memcpy(d + 1, &x, sizeof(int));
+    memcpy(d + 1 + sizeof(int), &y, sizeof(int));
+    pktOut->len = 1 + 2 * sizeof(int);
+
+    // Här anger vi vart paketet ska gå:
     pktOut->address = peerAddr;
-    memcpy(pktOut->data, &x, sizeof(int));
-    memcpy(pktOut->data + sizeof(int), &y, sizeof(int));
-    pktOut->len = sizeof(int) * 2;
+
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+
+void network_send_spawn_mob(int idx, int x, int y, int type, int health)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_SPAWN_MOB;
+    int off = 1;
+    memcpy(d + off, &idx, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &x, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &y, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &type, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &health, sizeof(int));
+    off += sizeof(int);
+    pktOut->len = off;
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+void network_send_spawn_powerup(int idx, int x, int y, int ptype)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_SPAWN_PWR;
+    int off = 1;
+    memcpy(d + off, &idx, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &x, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &y, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &ptype, sizeof(int));
+    off += sizeof(int);
+    pktOut->len = off;
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+
+void network_send_remove_mob(int index)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_REMOVE_MOB;
+    memcpy(d + 1, &index, sizeof(int));
+    pktOut->len = 1 + sizeof(int);
+    pktOut->address = peerAddr; // se till att peerAddr är satt
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+
+void network_send_fire_bullet(int idx, int x, int y, float dx, float dy)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_FIRE_BULLET;
+    int off = 1;
+
+    memcpy(d + off, &idx, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &x, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &y, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &dx, sizeof(float));
+    off += sizeof(float);
+    memcpy(d + off, &dy, sizeof(float));
+    off += sizeof(float);
+
+    pktOut->len = off;
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+
+void network_send_remove_powerup(int idx)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_REMOVE_PWR;
+    memcpy(d + 1, &idx, sizeof(int));
+    pktOut->len = 1 + sizeof(int);
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+
+void network_send_remove_bullet(int idx)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_REMOVE_BULLET;
+    memcpy(d + 1, &idx, sizeof(int));
+    pktOut->len = 1 + sizeof(int);
+    pktOut->address = peerAddr;
     SDLNet_UDP_Send(netSocket, -1, pktOut);
 }

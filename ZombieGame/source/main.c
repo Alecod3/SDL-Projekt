@@ -418,6 +418,12 @@ int main(int argc, char *argv[])
                                         DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
     playerRemote.tint = (SDL_Color){200, 80, 80, 255};
 
+    if (mode == MODE_JOIN)
+    {
+        // Skicka ett första paket för att hostens wait_for_client() ska snappa upp dig
+        network_send(playerLocal.rect.x, playerLocal.rect.y);
+    }
+
     init_sound();
 
     play_music("source/spelmusik.wav");
@@ -525,6 +531,25 @@ int main(int argc, char *argv[])
 
     Uint32 now, last_mob_spawn_time = 0, last_powerup_spawn_time = 0;
 
+    if (mode == MODE_HOST)
+    {
+        wait_for_client(renderer, uiFont);
+
+        // Skicka befintliga mobs
+        for (int i = 0; i < MAX_MOBS; i++)
+            if (mobs[i].active)
+                network_send_spawn_mob(i,
+                                       mobs[i].rect.x, mobs[i].rect.y,
+                                       mobs[i].type, mobs[i].health);
+
+        // Skicka befintliga powerups
+        for (int i = 0; i < MAX_POWERUPS; i++)
+            if (powerups[i].active)
+                network_send_spawn_powerup(i,
+                                           powerups[i].rect.x, powerups[i].rect.y,
+                                           powerups[i].type);
+    }
+
     // Spel-loop
     while (running)
     {
@@ -550,11 +575,22 @@ int main(int argc, char *argv[])
                         bullets[i].rect.w = BULLET_SIZE;
                         bullets[i].rect.h = BULLET_SIZE;
                         bullets[i].active = true;
-                        float dx = (float)mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
-                        float dy = (float)my - (playerLocal.rect.y + PLAYER_SIZE / 2);
-                        float length = sqrtf(dx * dx + dy * dy);
-                        bullets[i].dx = BULLET_SPEED * (dx / length);
-                        bullets[i].dy = BULLET_SPEED * (dy / length);
+
+                        // 1) Räkna ut rörelseriktning först
+                        {
+                            float dx = (float)mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
+                            float dy = (float)my - (playerLocal.rect.y + PLAYER_SIZE / 2);
+                            float length = sqrtf(dx * dx + dy * dy);
+                            bullets[i].dx = BULLET_SPEED * (dx / length);
+                            bullets[i].dy = BULLET_SPEED * (dy / length);
+                        }
+
+                        // 2) Skicka kulan med rätt dx/dy
+                        network_send_fire_bullet(
+                            i,
+                            bullets[i].rect.x, bullets[i].rect.y,
+                            bullets[i].dx, bullets[i].dy);
+
                         play_sound(SOUND_SHOOT);
                         break;
                     }
@@ -564,13 +600,96 @@ int main(int argc, char *argv[])
 
         const Uint8 *state = SDL_GetKeyboardState(NULL);
 
-        int rx, ry;
-        if (network_receive(&rx, &ry))
+        // ——— Rå nätverks‐dispatch istället för network_receive() ———
+        while (SDLNet_UDP_Recv(netSocket, pktIn))
         {
-            playerRemote.rect.x = rx;
-            playerRemote.rect.y = ry;
-        }
+            Uint8 msg = pktIn->data[0];
+            int off = 1;
+            if (msg == MSG_POS)
+            {
+                int rx, ry;
+                memcpy(&rx, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&ry, pktIn->data + off, sizeof(int));
+                playerRemote.rect.x = rx;
+                playerRemote.rect.y = ry;
+            }
+            else if (msg == MSG_SPAWN_MOB)
+            {
+                int idx, x, y, type, health;
+                memcpy(&idx, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&x, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&y, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&type, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&health, pktIn->data + off, sizeof(int));
+                if (idx >= 0 && idx < MAX_MOBS)
+                    mobs[idx] = create_mob(x, y, MOB_SIZE, type, health);
+            }
+            else if (msg == MSG_SPAWN_PWR)
+            {
+                int idx, x, y, ptype;
+                memcpy(&idx, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&x, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&y, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&ptype, pktIn->data + off, sizeof(int));
+                if (idx >= 0 && idx < MAX_POWERUPS)
+                    powerups[idx] = create_powerup(ptype, x, y);
+            }
+            else if (msg == MSG_FIRE_BULLET)
+            {
+                int idx, x, y;
+                float dx, dy;
 
+                memcpy(&idx, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&x, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&y, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&dx, pktIn->data + off, sizeof(float));
+                off += sizeof(float);
+                memcpy(&dy, pktIn->data + off, sizeof(float));
+                off += sizeof(float);
+
+                bullets[idx].rect.x = x;
+                bullets[idx].rect.y = y;
+                bullets[idx].dx = dx;
+                bullets[idx].dy = dy;
+                bullets[idx].rect.w = BULLET_SIZE;
+                bullets[idx].rect.h = BULLET_SIZE;
+                bullets[idx].active = true;
+            }
+
+            else if (msg == MSG_REMOVE_PWR)
+            {
+                int idx;
+                memcpy(&idx, pktIn->data + 1, sizeof(int));
+                if (idx >= 0 && idx < MAX_POWERUPS)
+                    powerups[idx].active = false;
+            }
+
+            else if (msg == MSG_REMOVE_MOB)
+            {
+                int idx;
+                memcpy(&idx, pktIn->data + 1, sizeof(int));
+                if (idx >= 0 && idx < MAX_MOBS)
+                    mobs[idx].active = false;
+            }
+            else if (msg == MSG_REMOVE_BULLET)
+            {
+                int idx;
+                memcpy(&idx, pktIn->data + 1, sizeof(int));
+                if (idx >= 0 && idx < MAX_BULLETS)
+                    bullets[idx].active = false;
+            }
+        }
         update_player(&playerLocal, state);
         network_send(playerLocal.rect.x, playerLocal.rect.y);
 
@@ -589,11 +708,22 @@ int main(int argc, char *argv[])
                         bullets[i].rect.w = BULLET_SIZE;
                         bullets[i].rect.h = BULLET_SIZE;
                         bullets[i].active = true;
-                        float dx = (float)mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
-                        float dy = (float)my - (playerLocal.rect.y + PLAYER_SIZE / 2);
-                        float length = sqrtf(dx * dx + dy * dy);
-                        bullets[i].dx = BULLET_SPEED * (dx / length);
-                        bullets[i].dy = BULLET_SPEED * (dy / length);
+
+                        // 1) Beräkna dx/dy
+                        {
+                            float dx = (float)mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
+                            float dy = (float)my - (playerLocal.rect.y + PLAYER_SIZE / 2);
+                            float length = sqrtf(dx * dx + dy * dy);
+                            bullets[i].dx = BULLET_SPEED * (dx / length);
+                            bullets[i].dy = BULLET_SPEED * (dy / length);
+                        }
+
+                        // 2) Skicka med korrekta värden
+                        network_send_fire_bullet(
+                            i,
+                            bullets[i].rect.x, bullets[i].rect.y,
+                            bullets[i].dx, bullets[i].dy);
+
                         play_sound(SOUND_SHOOT);
                         break;
                     }
@@ -662,6 +792,8 @@ int main(int argc, char *argv[])
                     bullets[i].rect.y < 0 || bullets[i].rect.y > SCREEN_HEIGHT)
                 {
                     bullets[i].active = false;
+
+                    network_send_remove_bullet(i);
                     continue;
                 }
                 for (int j = 0; j < MAX_MOBS; j++)
@@ -672,6 +804,8 @@ int main(int argc, char *argv[])
                         if (mobs[j].health <= 0)
                         {
                             mobs[j].active = false;
+                            network_send_remove_mob(j);
+                            network_send_remove_bullet(i);
                             score += 100;
                             if (rand() % 4 == 0)
                             { // 25% chans att en mob släpper en powerup vid död
@@ -708,21 +842,22 @@ int main(int argc, char *argv[])
 
         // Spawna nya mobs var 1,5 sekund
         now = SDL_GetTicks();
-        if (now - last_mob_spawn_time >= 1500)
+        if (mode == MODE_HOST && now - last_mob_spawn_time >= 1500)
         {
             for (int i = 0; i < MAX_MOBS; i++)
             {
                 if (!mobs[i].active)
                 {
-                    int x, y, type, health;
-                    do
-                    {
-                        x = rand() % (SCREEN_WIDTH - MOB_SIZE);
-                        y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
-                        type = rand() % 4;
-                        health = (type == 3) ? 2 : 1;
-                        mobs[i] = create_mob(x, y, MOB_SIZE, type, health);
-                    } while (check_mob_collision(&mobs[i].rect, mobs, i));
+                    int x = rand() % (SCREEN_WIDTH - MOB_SIZE);
+                    int y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
+                    int type = rand() % 4;
+                    int health = (type == 3) ? 2 : 1;
+
+                    // 1) Skapa lokalt
+                    mobs[i] = create_mob(x, y, MOB_SIZE, type, health);
+                    // 2) Synka till klienten med exakta slot-index
+                    network_send_spawn_mob(i, x, y, type, health);
+
                     break;
                 }
             }
@@ -730,28 +865,38 @@ int main(int argc, char *argv[])
         }
 
         // Spawna nya powerups var 5 sekund
-        if (now - last_powerup_spawn_time >= 5000)
+        if (mode == MODE_HOST && now - last_powerup_spawn_time >= 5000)
         {
             for (int i = 0; i < MAX_POWERUPS; i++)
             {
                 if (!powerups[i].active)
                 {
-                    PowerupType t = rand() % 3;
+                    int t = rand() % 3;
                     int x = rand() % (SCREEN_WIDTH - 32);
                     int y = rand() % (SCREEN_HEIGHT - 32);
+
+                    // 1) Skapa lokalt
                     powerups[i] = create_powerup(t, x, y);
+
+                    // 2) Synka med klienten – skicka index i först
+                    network_send_spawn_powerup(i, x, y, t);
+
                     break;
                 }
             }
             last_powerup_spawn_time = now;
         }
-
         // Hantera kollisioner och effekter för powerups
         for (int i = 0; i < MAX_POWERUPS; i++)
         {
             check_powerup_collision(&powerups[i], playerLocal.rect, &playerLocal.lives, &playerLocal.speed, &playerLocal.damage, now, &effects);
             if (powerups[i].picked_up && !powerups[i].sound_played)
             {
+                // 1) Ta bort powerup‑slot lokalt och synka med peer
+                powerups[i].active = false;
+                network_send_remove_powerup(i);
+
+                // 2) Spela upp rätt ljud
                 switch (powerups[i].type)
                 {
                 case POWERUP_EXTRA_LIFE:
@@ -769,7 +914,9 @@ int main(int argc, char *argv[])
                 default:
                     break;
                 }
-                powerups[i].sound_played = true; // 👈 flagga att ljudet har spelats
+
+                // 3) Flagga så vi inte spelar ljudet igen
+                powerups[i].sound_played = true;
             }
         }
         update_effects(&effects, &playerLocal.speed, &playerLocal.damage, now, powerups);
@@ -835,7 +982,6 @@ int main(int argc, char *argv[])
 
         SDL_Delay(16);
     }
-
     // Rensa upp resurser
     SDL_DestroyTexture(tex_extralife);
     SDL_DestroyTexture(tex_extraspeed);
@@ -892,39 +1038,69 @@ NetMode show_multiplayer_menu(SDL_Renderer *renderer, TTF_Font *font)
 
 char *prompt_for_ip(SDL_Renderer *renderer, TTF_Font *font)
 {
+    // 1) Starta textinput och släng gamla events
     SDL_StartTextInput();
+    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+
+    // 2) Alokera buffert
     char *ip = calloc(256, 1);
     size_t len = 0;
     SDL_Event e;
+
+    // 3) Rektangel för inputfältet
+    SDL_Rect inputRect = {100, 150, 300, 32};
+
     while (1)
     {
+        // 4) Hämta och hantera alla events
         while (SDL_PollEvent(&e))
         {
             if (e.type == SDL_QUIT)
                 exit(0);
+
             if (e.type == SDL_TEXTINPUT)
             {
+                // Lägg på nya tecken
                 if (len + strlen(e.text.text) < 255)
                 {
                     strcat(ip, e.text.text);
                     len = strlen(ip);
                 }
             }
-            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_BACKSPACE && len > 0)
+            else if (e.type == SDL_KEYDOWN)
             {
-                ip[--len] = '\0';
-            }
-            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN)
-            {
-                SDL_StopTextInput();
-                return ip;
+                // Backspace
+                if (e.key.keysym.sym == SDLK_BACKSPACE && len > 0)
+                {
+                    ip[--len] = '\0';
+                }
+                // Vanlig Enter eller Enter på knappsatsen
+                else if (e.key.keysym.sym == SDLK_RETURN ||
+                         e.key.keysym.sym == SDLK_KP_ENTER)
+                {
+                    SDL_StopTextInput();
+                    return ip;
+                }
             }
         }
+
+        // 5) Rendera prompt + inputfältet
         SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
         SDL_RenderClear(renderer);
-        render_text(renderer, font, "Enter server IP:", 100, 100);
-        render_text(renderer, font, ip, 100, 150);
+
+        // Skriv prompt‐text
+        render_text(renderer, font, "Enter server IP:", 100, 110);
+
+        // Rita fältets ram
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_RenderDrawRect(renderer, &inputRect);
+
+        // Skriv IP‐strängen inuti
+        render_text(renderer, font, ip, inputRect.x + 5, inputRect.y + 5);
+
         SDL_RenderPresent(renderer);
+
+        // Liten paus så vi inte skriker CPU
         SDL_Delay(16);
     }
 }
