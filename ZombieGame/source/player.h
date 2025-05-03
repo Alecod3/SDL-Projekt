@@ -10,11 +10,13 @@
 #define PLAYER_SIZE 30
 
 // ADT för spelaren
-typedef struct {
+typedef struct
+{
     SDL_Rect rect;
     int speed;
     int damage;
     int lives;
+    SDL_Color tint;
 } Player;
 
 // Funktioner för att skapa, uppdatera och rita spelaren
@@ -23,6 +25,6 @@ void update_player(Player *p, const Uint8 *state);
 void draw_player(SDL_Renderer *renderer, const Player *p);
 void draw_powerup_bars(SDL_Renderer *renderer, const Player *p, Powerup powerups[], int now);
 
-extern SDL_Texture* tex_player;
+extern SDL_Texture *tex_player;
 
-#endif 
+#endif
