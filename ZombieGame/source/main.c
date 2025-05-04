@@ -25,8 +25,6 @@
 #define MAX_BULLETS 10
 #define MAX_MOBS 5
 #define MAX_POWERUPS 5
-// HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH definieras exempelvis i powerups.h eller kan definieras här
-
 #define HEALTH_BAR_WIDTH 200
 #define HEALTH_BAR_HEIGHT 20
 
@@ -483,7 +481,7 @@ int main(int argc, char *argv[])
 
     if (!tex_extralife || !tex_extraspeed || !tex_doubledamage)
     {
-        SDL_Log("Kunde inte ladda in powerup-texturer: %s", SDL_GetError());
+        SDL_Log("Kunde inte ladda in powerup-texturer: %s", IMG_GetError());
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();
@@ -491,9 +489,6 @@ int main(int argc, char *argv[])
     }
 
     srand((unsigned int)time(NULL));
-
-    // Skapa spelaren via Player-ADT; DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE och MAX_HEALTH ska vara definierade (här antas de komma från powerups.h)
-    // Player player = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, PLAYER_SIZE, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
 
     // Skapa bullets, mobs och powerups
     Bullet bullets[MAX_BULLETS] = {0};
@@ -564,7 +559,6 @@ int main(int argc, char *argv[])
                 int mx, my;
                 SDL_GetMouseState(&mx, &my);
                 // Skjut en bullet med spelarens damage
-                // (Skjutfunktionen finns i main, vi använder lokala bullets array)
                 for (int i = 0; i < MAX_BULLETS; i++)
                 {
                     if (!bullets[i].active)
@@ -671,7 +665,6 @@ int main(int argc, char *argv[])
                 bullets[idx].rect.h = BULLET_SIZE;
                 bullets[idx].active = true;
             }
-
             else if (msg == MSG_REMOVE_PWR)
             {
                 int idx;
@@ -679,28 +672,92 @@ int main(int argc, char *argv[])
                 if (idx >= 0 && idx < MAX_POWERUPS)
                     powerups[idx].active = false;
             }
-
-            else if (msg == MSG_MOB_POS)
-            {
-                int idx, mx, my;
-                memcpy(&idx, pktIn->data + off, sizeof(int));
-                off += sizeof(int);
-                memcpy(&mx, pktIn->data + off, sizeof(int));
-                off += sizeof(int);
-                memcpy(&my, pktIn->data + off, sizeof(int)); // off += sizeof(int);
-
-                if (idx >= 0 && idx < MAX_MOBS)
-                {
-                    mobs[idx].rect.x = mx;
-                    mobs[idx].rect.y = my;
-                }
-            }
             else if (msg == MSG_REMOVE_MOB)
             {
                 int idx;
                 memcpy(&idx, pktIn->data + 1, sizeof(int));
                 if (idx >= 0 && idx < MAX_MOBS)
                     mobs[idx].active = false;
+            }
+            else if (msg == MSG_FREEZE)
+            {
+                effects.freeze_active = true;
+                effects.freeze_start_time = SDL_GetTicks();
+            }
+            else if (msg == MSG_DAMAGE)
+            {
+                int amount;
+                memcpy(&amount, pktIn->data + 1, sizeof(int));
+                // Båda spelarna tar damage
+                playerLocal.lives -= amount;
+                playerRemote.lives -= amount;
+                network_send_set_hp(playerLocal.lives); // Synka det nya HP-värdet
+                // Kontrollera om spelet är över
+                if (playerLocal.lives <= 0)
+                {
+                    network_send_game_over();
+                    int result = showGameOver(renderer);
+                    if (result == 0)
+                    {
+                        skipMenu = true;
+                        return main(argc, argv);
+                    }
+                    else if (result == 1)
+                    {
+                        skipMenu = false;
+                        return main(argc, argv);
+                    }
+                    else
+                    {
+                        running = false;
+                    }
+                }
+            }
+            else if (msg == MSG_SET_HP)
+            {
+                int hp;
+                memcpy(&hp, pktIn->data + 1, sizeof(int));
+                // Sätt båda spelarnas HP till samma värde
+                playerLocal.lives = hp;
+                playerRemote.lives = hp;
+                // Kontrollera om spelet är över
+                if (playerLocal.lives <= 0)
+                {
+                    network_send_game_over();
+                    int result = showGameOver(renderer);
+                    if (result == 0)
+                    {
+                        skipMenu = true;
+                        return main(argc, argv);
+                    }
+                    else if (result == 1)
+                    {
+                        skipMenu = false;
+                        return main(argc, argv);
+                    }
+                    else
+                    {
+                        running = false;
+                    }
+                }
+            }
+            else if (msg == MSG_GAME_OVER)
+            {
+                int result = showGameOver(renderer);
+                if (result == 0)
+                {
+                    skipMenu = true;
+                    return main(argc, argv);
+                }
+                else if (result == 1)
+                {
+                    skipMenu = false;
+                    return main(argc, argv);
+                }
+                else
+                {
+                    running = false;
+                }
             }
             else if (msg == MSG_REMOVE_BULLET)
             {
@@ -717,7 +774,6 @@ int main(int argc, char *argv[])
         float dx = mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
         float dy = my - (playerLocal.rect.y + PLAYER_SIZE / 2);
         playerLocal.aim_angle = atan2f(dy, dx) * 180.0f / (float)M_PI;
-        network_send(playerLocal.rect.x, playerLocal.rect.y, playerLocal.aim_angle);
         network_send(playerLocal.rect.x, playerLocal.rect.y, playerLocal.aim_angle);
 
         if (state[SDL_SCANCODE_SPACE])
@@ -763,45 +819,45 @@ int main(int argc, char *argv[])
             spacePressed = false;
         }
 
-        // Kollision och attack‑hantering mellan spelare och mobs
-        for (int i = 0; i < MAX_MOBS; i++)
+        // Kollision och attack‑hantering mellan spelare och mobs (endast på host)
+        if (mode == MODE_HOST)
         {
-            if (!mobs[i].active)
-                continue;
-
-            if (mobs[i].attacking)
+            for (int i = 0; i < MAX_MOBS; i++)
             {
-                Uint32 now = SDL_GetTicks();
-                // Slå bara om attack_interval passerat
-                if (now - mobs[i].last_attack_time >= mobs[i].attack_interval)
-                {
-                    if (mobs[i].type == 3)
-                    {
-                        playerLocal.lives -= 2;
-                    }
-                    else
-                    {
-                        playerLocal.lives--;
-                    }
-                    mobs[i].last_attack_time = now;
+                if (!mobs[i].active)
+                    continue;
 
-                    // Kolla om spelaren dör
-                    if (playerLocal.lives <= 0)
+                if (mobs[i].attacking)
+                {
+                    Uint32 now = SDL_GetTicks();
+                    // Slå bara om attack_interval passerat
+                    if (now - mobs[i].last_attack_time >= mobs[i].attack_interval)
                     {
-                        int result = showGameOver(renderer);
-                        if (result == 0)
+                        int damage = (mobs[i].type == 3) ? 2 : 1;
+                        playerLocal.lives -= damage;
+                        playerRemote.lives -= damage;
+                        network_send_damage(damage); // Skicka damage till klienten
+                        mobs[i].last_attack_time = now;
+
+                        // Kontrollera om spelet är över
+                        if (playerLocal.lives <= 0)
                         {
-                            skipMenu = true;
-                            return main(argc, argv);
-                        }
-                        else if (result == 1)
-                        {
-                            skipMenu = false;
-                            return main(argc, argv);
-                        }
-                        else
-                        {
-                            running = false;
+                            network_send_game_over();
+                            int result = showGameOver(renderer);
+                            if (result == 0)
+                            {
+                                skipMenu = true;
+                                return main(argc, argv);
+                            }
+                            else if (result == 1)
+                            {
+                                skipMenu = false;
+                                return main(argc, argv);
+                            }
+                            else
+                            {
+                                running = false;
+                            }
                         }
                     }
                 }
@@ -838,10 +894,10 @@ int main(int argc, char *argv[])
                             { // 25% chans att en mob släpper en powerup vid död
                                 for (int k = 0; k < MAX_POWERUPS; k++)
                                 {
-                                    if (!powerups[k].active && !powerups[k].picked_up)
+                                    if (!powerups[j].active && !powerups[j].picked_up)
                                     {
                                         PowerupType t = rand() % 4;
-                                        powerups[k] = create_powerup(t, mobs[j].rect.x, mobs[j].rect.y);
+                                        powerups[j] = create_powerup(t, mobs[j].rect.x, mobs[j].rect.y);
                                         break;
                                     }
                                 }
@@ -856,25 +912,25 @@ int main(int argc, char *argv[])
 
         // Uppdatera mobs så att de rör sig mot spelaren (om de inte är frysta)
         bool freeze_active = effects.freeze_active;
-
         for (int i = 0; i < MAX_MOBS; i++)
         {
             if (!mobs[i].active || freeze_active)
                 continue;
 
-            // beräkna kvadrerad distans
-            float dxL = (playerLocal.rect.x - mobs[i].rect.x);
-            float dyL = (playerLocal.rect.y - mobs[i].rect.y);
-            float distL = dxL * dxL + dyL * dyL;
+            // Beräkna avstånd till Local
+            float dxL = (playerLocal.rect.x + playerLocal.rect.w / 2.0f) - (mobs[i].rect.x + mobs[i].rect.w / 2.0f);
+            float dyL = (playerLocal.rect.y + playerLocal.rect.h / 2.0f) - (mobs[i].rect.y + mobs[i].rect.h / 2.0f);
+            float distL = sqrtf(dxL * dxL + dyL * dyL);
 
-            float dxR = (playerRemote.rect.x - mobs[i].rect.x);
-            float dyR = (playerRemote.rect.y - mobs[i].rect.y);
-            float distR = dxR * dxR + dyR * dyR;
+            // Beräkna avstånd till Remote
+            float dxR = (playerRemote.rect.x + playerRemote.rect.w / 2.0f) - (mobs[i].rect.x + mobs[i].rect.w / 2.0f);
+            float dyR = (playerRemote.rect.y + playerRemote.rect.h / 2.0f) - (mobs[i].rect.y + mobs[i].rect.h / 2.0f);
+            float distR = sqrtf(dxR * dxR + dyR * dyR);
 
-            SDL_Rect target = (distR < distL)
-                                  ? playerRemote.rect
-                                  : playerLocal.rect;
+            // Välj den närmaste spelaren som mål
+            SDL_Rect target = (distL < distR) ? playerLocal.rect : playerRemote.rect;
 
+            // Uppdatera mobben mot target
             update_mob(&mobs[i], target);
         }
 
@@ -933,6 +989,8 @@ int main(int argc, char *argv[])
                 // 1) Ta bort powerup‑slot lokalt och synka med peer
                 powerups[i].active = false;
                 network_send_remove_powerup(i);
+                if (powerups[i].type == POWERUP_FREEZE_ENEMIES)
+                    network_send_freeze();
 
                 // 2) Spela upp rätt ljud
                 switch (powerups[i].type)
@@ -979,9 +1037,6 @@ int main(int argc, char *argv[])
             }
         }
 
-        // draw_player(renderer, &playerLocal);
-        // draw_player(renderer, &playerRemote);
-
         SDL_Point center = {PLAYER_SIZE / 2, PLAYER_SIZE / 2};
 
         SDL_RenderCopyEx(renderer, tex_player, NULL, &playerLocal.rect,
@@ -1014,13 +1069,21 @@ int main(int argc, char *argv[])
             draw_powerup(renderer, &powerups[i]);
         }
 
-        // Rita en enkel livsbar
+        int barX = 10;
+        int barY = 10;
+        int barW = HEALTH_BAR_WIDTH;
+        int barH = HEALTH_BAR_HEIGHT;
+
+        // 1) Rita röd bakgrund (full bredd)
+        SDL_Rect bg = {barX, barY, barW, barH};
         SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        SDL_Rect healthBarBackground = {SCREEN_WIDTH - HEALTH_BAR_WIDTH - 10, 10, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT};
-        SDL_RenderFillRect(renderer, &healthBarBackground);
+        SDL_RenderFillRect(renderer, &bg);
+
+        // 2) Rita grön förgrund (proportionellt mot liv kvar)
+        float frac = (float)playerLocal.lives / (float)MAX_HEALTH;
+        SDL_Rect fg = {barX, barY, (int)(barW * frac), barH};
         SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-        SDL_Rect healthBar = {SCREEN_WIDTH - HEALTH_BAR_WIDTH - 10, 10, (HEALTH_BAR_WIDTH * playerLocal.lives) / MAX_HEALTH, HEALTH_BAR_HEIGHT};
-        SDL_RenderFillRect(renderer, &healthBar);
+        SDL_RenderFillRect(renderer, &fg);
 
         // Skriver ut score och lives på konsolen
         printf("Score: %d | Lives: %d\n", score, playerLocal.lives);

@@ -108,6 +108,7 @@ void network_send_spawn_mob(int idx, int x, int y, int type, int health)
     pktOut->address = peerAddr;
     SDLNet_UDP_Send(netSocket, -1, pktOut);
 }
+
 void network_send_spawn_powerup(int idx, int x, int y, int ptype)
 {
     Uint8 *d = pktOut->data;
@@ -132,7 +133,7 @@ void network_send_remove_mob(int index)
     d[0] = MSG_REMOVE_MOB;
     memcpy(d + 1, &index, sizeof(int));
     pktOut->len = 1 + sizeof(int);
-    pktOut->address = peerAddr; // se till att peerAddr är satt
+    pktOut->address = peerAddr;
     SDLNet_UDP_Send(netSocket, -1, pktOut);
 }
 
@@ -178,18 +179,41 @@ void network_send_remove_bullet(int idx)
     SDLNet_UDP_Send(netSocket, -1, pktOut);
 }
 
-void network_send_mob_pos(int idx, int x, int y)
+void network_send_freeze(void)
 {
     Uint8 *d = pktOut->data;
-    d[0] = MSG_MOB_POS;
+    d[0] = MSG_FREEZE;
+    pktOut->len = 1;
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+
+void network_send_damage(int amount)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_DAMAGE;
+    memcpy(d + 1, &amount, sizeof(int));
+    pktOut->len = 1 + sizeof(int);
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+
+void network_send_set_hp(int hp)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_SET_HP;
     int off = 1;
-    memcpy(d + off, &idx, sizeof(int));
-    off += sizeof(int);
-    memcpy(d + off, &x, sizeof(int));
-    off += sizeof(int);
-    memcpy(d + off, &y, sizeof(int));
-    off += sizeof(int);
-    pktOut->len = off;
+    memcpy(d + off, &hp, sizeof(int));
+    pktOut->len = off + sizeof(int);
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+
+void network_send_game_over(void)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_GAME_OVER;
+    pktOut->len = 1;
     pktOut->address = peerAddr;
     SDLNet_UDP_Send(netSocket, -1, pktOut);
 }
