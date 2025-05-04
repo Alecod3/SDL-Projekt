@@ -403,6 +403,13 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    const char *roomID = "game123"; // samma för båda
+    if (!network_rendezvous(mode, roomID))
+    {
+        SDL_Log("Rendezvous misslyckades");
+        return 1;
+    }
+
     if (mode == MODE_HOST)
     {
         wait_for_client(renderer, uiFont);
@@ -600,7 +607,6 @@ int main(int argc, char *argv[])
 
         const Uint8 *state = SDL_GetKeyboardState(NULL);
 
-        // ——— Rå nätverks‐dispatch istället för network_receive() ———
         while (SDLNet_UDP_Recv(netSocket, pktIn))
         {
             Uint8 msg = pktIn->data[0];
