@@ -1,12 +1,14 @@
 #include "player.h"
 #include <math.h>
-#include "powerups.h"
+#include <SDL2/SDL.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-Player create_player(int x, int y, int size, int speed, int damage, int lives)
+extern SDL_Texture *tex_player;
+
+Player create_player(int x, int y, int size, float speed, int damage, int lives)
 {
     Player p;
     p.rect.x = x;
@@ -16,105 +18,59 @@ Player create_player(int x, int y, int size, int speed, int damage, int lives)
     p.speed = speed;
     p.damage = damage;
     p.lives = lives;
-    p.aim_angle = 0.0f;
-    p.tint = (SDL_Color){255, 255, 255, 255};
-
     return p;
 }
 
-void update_player(Player *p, const Uint8 *state)
+void update_player(Player *player, const Uint8 *state)
 {
     int dx = 0, dy = 0;
-    if ((state[SDL_SCANCODE_UP] || state[SDL_SCANCODE_W]) && p->rect.y > 0)
-        dy = -1;
-    if ((state[SDL_SCANCODE_DOWN] || state[SDL_SCANCODE_S]) && p->rect.y + p->rect.h < SCREEN_HEIGHT)
-        dy = 1;
-    if ((state[SDL_SCANCODE_LEFT] || state[SDL_SCANCODE_A]) && p->rect.x > 0)
-        dx = -1;
-    if ((state[SDL_SCANCODE_RIGHT] || state[SDL_SCANCODE_D]) && p->rect.x + p->rect.w < SCREEN_WIDTH)
-        dx = 1;
+    if (state[SDL_SCANCODE_W] || state[SDL_SCANCODE_UP])
+        dy -= 1;
+    if (state[SDL_SCANCODE_S] || state[SDL_SCANCODE_DOWN])
+        dy += 1;
+    if (state[SDL_SCANCODE_A] || state[SDL_SCANCODE_LEFT])
+        dx -= 1;
+    if (state[SDL_SCANCODE_D] || state[SDL_SCANCODE_RIGHT])
+        dx += 1;
 
-    float magnitude = sqrtf(dx * dx + dy * dy);
-    if (magnitude != 0)
+    if (dx != 0 || dy != 0)
     {
-        float norm_dx = (dx / magnitude) * p->speed;
-        float norm_dy = (dy / magnitude) * p->speed;
-        p->rect.x += (int)norm_dx;
-        p->rect.y += (int)norm_dy;
+        float length = sqrtf(dx * dx + dy * dy);
+        dx = (int)(player->speed * dx / length);
+        dy = (int)(player->speed * dy / length);
     }
+
+    player->rect.x += dx;
+    player->rect.y += dy;
+
+    if (player->rect.x < 0)
+        player->rect.x = 0;
+    if (player->rect.y < 0)
+        player->rect.y = 0;
+    if (player->rect.x > SCREEN_WIDTH - player->rect.w)
+        player->rect.x = SCREEN_WIDTH - player->rect.w;
+    if (player->rect.y > SCREEN_HEIGHT - player->rect.h)
+        player->rect.y = SCREEN_HEIGHT - player->rect.h;
 }
 
-extern SDL_Texture *tex_player;
-
-extern SDL_Texture *tex_player;
-
-void draw_player(SDL_Renderer *renderer, const Player *p)
+void draw_player(SDL_Renderer *renderer, Player *player)
 {
-    if (tex_player)
+    float angle;
+    if (player->angle != 0.0f)
     {
-        int mx, my;
-        SDL_GetMouseState(&mx, &my);
-
-        // Spelarens mittpunkt
-        int px = p->rect.x + p->rect.w / 2;
-        int py = p->rect.y + p->rect.h / 2;
-
-        // Vektor till musen
-        float dx = mx - px;
-        float dy = my - py;
-
-        // Räkna ut vinkel i grader
-        float angle = atan2f(dy, dx) * (180.0f / M_PI);
-
-        SDL_Point center = {p->rect.w / 2, p->rect.h / 2};
-
-        SDL_RenderCopyEx(renderer, tex_player, NULL, &p->rect, angle, &center, SDL_FLIP_NONE);
+        // Use stored angle for remote player
+        angle = player->angle;
     }
     else
     {
-        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // fallback-färg
-        SDL_RenderFillRect(renderer, &p->rect);
+        // Calculate angle based on mouse for local player
+        int mx, my;
+        SDL_GetMouseState(&mx, &my);
+        float dx = (float)mx - (player->rect.x + player->rect.w / 2);
+        float dy = (float)my - (player->rect.y + player->rect.h / 2);
+        angle = atan2f(dy, dx) * 180.0f / M_PI;
     }
-}
 
-void draw_powerup_bars(SDL_Renderer *renderer, const Player *p, Powerup powerups[], int now)
-{
-    int bar_y_offset = 10;
-    int bar_width = p->rect.w;
-    int bar_height = 5;
-
-    for (int i = 0; i < MAX_POWERUPS; i++)
-    {
-        if (!powerups[i].picked_up || powerups[i].duration == 0 || powerups[i].type == POWERUP_EXTRA_LIFE)
-            continue;
-        Uint32 elapsed = now - powerups[i].pickup_time;
-        if (elapsed >= powerups[i].duration)
-        {
-            powerups[i].picked_up = false;
-            continue;
-        }
-        int filled_width = (int)((1.0f - ((float)elapsed / powerups[i].duration)) * bar_width);
-        SDL_Rect bar_bg = {p->rect.x, p->rect.y - bar_y_offset, bar_width, bar_height};
-        SDL_Rect bar_fg = {p->rect.x, p->rect.y - bar_y_offset, filled_width, bar_height};
-
-        SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Mörkgrå bakgrund
-        SDL_RenderFillRect(renderer, &bar_bg);
-
-        switch (powerups[i].type)
-        {
-        case POWERUP_SPEED_BOOST:
-            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Gul
-            break;
-        case POWERUP_DOUBLE_DAMAGE:
-            SDL_SetRenderDrawColor(renderer, 128, 128, 128, 255); // Grå
-            break;
-        case POWERUP_FREEZE_ENEMIES:
-            SDL_SetRenderDrawColor(renderer, 0, 128, 255, 255); // Blå
-            break;
-        default:
-            break;
-        }
-        SDL_RenderFillRect(renderer, &bar_fg);
-        bar_y_offset += bar_height + 2;
-    }
+    SDL_Rect dest = {player->rect.x, player->rect.y, player->rect.w, player->rect.h};
+    SDL_RenderCopyEx(renderer, tex_player, NULL, &dest, angle, NULL, SDL_FLIP_NONE);
 }
