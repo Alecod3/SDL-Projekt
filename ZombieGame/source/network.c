@@ -73,17 +73,19 @@ bool network_receive(int *out_x, int *out_y)
     return false;
 }
 
-void network_send(int x, int y)
+void network_send(int x, int y, float angle)
 {
     Uint8 *d = pktOut->data;
     d[0] = MSG_POS;
-    memcpy(d + 1, &x, sizeof(int));
-    memcpy(d + 1 + sizeof(int), &y, sizeof(int));
-    pktOut->len = 1 + 2 * sizeof(int);
-
-    // Här anger vi vart paketet ska gå:
+    int off = 1;
+    memcpy(d + off, &x, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &y, sizeof(int));
+    off += sizeof(int);
+    memcpy(d + off, &angle, sizeof(float));
+    off += sizeof(float);
+    pktOut->len = off;
     pktOut->address = peerAddr;
-
     SDLNet_UDP_Send(netSocket, -1, pktOut);
 }
 

@@ -421,7 +421,7 @@ int main(int argc, char *argv[])
     if (mode == MODE_JOIN)
     {
         // Skicka ett första paket för att hostens wait_for_client() ska snappa upp dig
-        network_send(playerLocal.rect.x, playerLocal.rect.y);
+        network_send(playerLocal.rect.x, playerLocal.rect.y, playerLocal.aim_angle);
     }
 
     init_sound();
@@ -608,11 +608,16 @@ int main(int argc, char *argv[])
             if (msg == MSG_POS)
             {
                 int rx, ry;
+                float rang;
                 memcpy(&rx, pktIn->data + off, sizeof(int));
                 off += sizeof(int);
                 memcpy(&ry, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&rang, pktIn->data + off, sizeof(float));
+                off += sizeof(float);
                 playerRemote.rect.x = rx;
                 playerRemote.rect.y = ry;
+                playerRemote.aim_angle = rang;
             }
             else if (msg == MSG_SPAWN_MOB)
             {
@@ -691,7 +696,14 @@ int main(int argc, char *argv[])
             }
         }
         update_player(&playerLocal, state);
-        network_send(playerLocal.rect.x, playerLocal.rect.y);
+
+        int mx, my;
+        SDL_GetMouseState(&mx, &my);
+        float dx = mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
+        float dy = my - (playerLocal.rect.y + PLAYER_SIZE / 2);
+        playerLocal.aim_angle = atan2f(dy, dx) * 180.0f / (float)M_PI;
+        network_send(playerLocal.rect.x, playerLocal.rect.y, playerLocal.aim_angle);
+        network_send(playerLocal.rect.x, playerLocal.rect.y, playerLocal.aim_angle);
 
         if (state[SDL_SCANCODE_SPACE])
         {
@@ -941,8 +953,16 @@ int main(int argc, char *argv[])
             }
         }
 
-        draw_player(renderer, &playerLocal);
-        draw_player(renderer, &playerRemote);
+        // draw_player(renderer, &playerLocal);
+        // draw_player(renderer, &playerRemote);
+
+        SDL_Point center = {PLAYER_SIZE / 2, PLAYER_SIZE / 2};
+
+        SDL_RenderCopyEx(renderer, tex_player, NULL, &playerLocal.rect,
+                         playerLocal.aim_angle, &center, SDL_FLIP_NONE);
+
+        SDL_RenderCopyEx(renderer, tex_player, NULL, &playerRemote.rect,
+                         playerRemote.aim_angle, &center, SDL_FLIP_NONE);
 
         draw_powerup_bars(renderer, &playerLocal, powerups, now);
 

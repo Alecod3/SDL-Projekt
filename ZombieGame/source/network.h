@@ -38,6 +38,5 @@ void network_send_remove_bullet(int idx);
 int network_init(NetMode mode, const char *server_ip);
 void network_shutdown(void);
 bool network_receive(int *out_x, int *out_y);
-void network_send(int x, int y);
-
+void network_send(int x, int y, float angle);
 #endif

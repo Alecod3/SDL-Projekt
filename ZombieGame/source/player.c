@@ -16,6 +16,7 @@ Player create_player(int x, int y, int size, int speed, int damage, int lives)
     p.speed = speed;
     p.damage = damage;
     p.lives = lives;
+    p.aim_angle = 0.0f;
     p.tint = (SDL_Color){255, 255, 255, 255};
 
     return p;

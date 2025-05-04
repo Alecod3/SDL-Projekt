@@ -16,6 +16,7 @@ typedef struct
     int speed;
     int damage;
     int lives;
+    float aim_angle;
     SDL_Color tint;
 } Player;
 
