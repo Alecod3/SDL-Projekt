@@ -1,1068 +1,1150 @@
+#include "network.h"
+#include <SDL2/SDL_ttf.h>
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
-#include <SDL2/SDL_net.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
-#include <string.h>
-#include <ctype.h>
 #include "player.h"
 #include "mob.h"
 #include "powerups.h"
 #include "sound.h"
 
+// Skärm- och spelkonstanter
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
 #define PLAYER_SIZE 30
 #define MOB_SIZE 30
+#define MOB_SPEED 3
 #define BULLET_SIZE 7
 #define BULLET_SPEED 7
-#define MAX_BULLETS 100
+#define MAX_BULLETS 10
 #define MAX_MOBS 5
 #define MAX_POWERUPS 5
+// HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH definieras exempelvis i powerups.h eller kan definieras här
+
 #define HEALTH_BAR_WIDTH 200
 #define HEALTH_BAR_HEIGHT 20
-#define UDP_PORT 12345
-#define CONNECTION_TIMEOUT 20000
+
+#define NET_PORT 12345
+#define PACKET_SIZE 32
+
+static void render_text(SDL_Renderer *renderer,
+                        TTF_Font *font,
+                        const char *msg,
+                        int x,
+                        int y)
+{
+    SDL_Color color = {255, 255, 255, 255}; // vit text
+    SDL_Surface *surf = TTF_RenderText_Blended(font, msg, color);
+    if (!surf)
+    {
+        SDL_Log("TTF_RenderText_Blended failed: %s", TTF_GetError());
+        return;
+    }
+    SDL_Texture *tex = SDL_CreateTextureFromSurface(renderer, surf);
+    SDL_Rect dst = {x, y, surf->w, surf->h};
+    SDL_FreeSurface(surf);
+    if (!tex)
+    {
+        SDL_Log("SDL_CreateTextureFromSurface failed: %s", SDL_GetError());
+        return;
+    }
+    SDL_RenderCopy(renderer, tex, NULL, &dst);
+    SDL_DestroyTexture(tex);
+}
+
+NetMode show_multiplayer_menu(SDL_Renderer *renderer, TTF_Font *font);
+char *prompt_for_ip(SDL_Renderer *renderer, TTF_Font *font);
+void wait_for_client(SDL_Renderer *renderer, TTF_Font *font);
 
 bool skipMenu = false;
-SDL_Texture *tex_player, *tex_mob, *tex_tiles, *tex_extralife, *tex_extraspeed, *tex_doubledamage, *tex_freezeenemies;
-bool is_multiplayer = false, is_host = false;
-int local_player_id = 0;
+SDL_Texture *tex_player = NULL;
+SDL_Texture *tex_mob = NULL;
+SDL_Texture *tex_tiles = NULL;
 
+int showSettings(SDL_Renderer *renderer, SDL_Window *window);
+
+// Bullet-ADT (här hålls den enkelt i main, men den kan även brytas ut)
 typedef struct
 {
     SDL_Rect rect;
     bool active;
     float dx, dy;
-    int owner;
 } Bullet;
 
-typedef enum
+int showMenu(SDL_Renderer *renderer, SDL_Window *window)
 {
-    PACKET_HANDSHAKE,
-    PACKET_PLAYER_POS,
-    PACKET_BULLET,
-    PACKET_MOB_UPDATE,
-    PACKET_POWERUP_UPDATE,
-    PACKET_GAME_STATE
-} PacketType;
-
-typedef struct
-{
-    PacketType type;
-    int id;
-    union
-    {
-        struct
-        {
-            int handshake;
-        } handshake;
-        struct
-        {
-            float x, y, angle;
-        } pos;
-        struct
-        {
-            float x, y, dx, dy;
-            bool active;
-        } bullet;
-        struct
-        {
-            int index;
-            float x, y;
-            int w, h;
-            bool active;
-            int health, type;
-        } mob;
-        struct
-        {
-            int index;
-            bool active, picked_up;
-            PowerupType type;
-            float x, y;
-        } powerup;
-        struct
-        {
-            int lives, score;
-            float speed;
-            int damage;
-        } state;
-    };
-} Packet;
-
-// Function to check if an IP address is valid
-bool is_valid_ip(const char *ip)
-{
-    int dots = 0, digits = 0;
-    for (int i = 0; ip[i]; i++)
-    {
-        if (ip[i] == '.')
-            dots++;
-        else if (isdigit(ip[i]))
-            digits++;
-        else
-            return false;
-    }
-    return dots == 3 && digits >= 4;
-}
-
-// Function to send a packet over UDP
-void send_packet(UDPsocket s, IPaddress peer, Packet *p)
-{
-    UDPpacket *up = SDLNet_AllocPacket(512);
-    if (!up)
-        return;
-    memcpy(up->data, p, sizeof(Packet));
-    up->len = sizeof(Packet);
-    up->address = peer;
-    SDLNet_UDP_Send(s, -1, up);
-    SDLNet_FreePacket(up);
-}
-
-int showIPInputScreen(SDL_Renderer *r, char *ip_buffer, int sz)
-{
-    TTF_Font *f = TTF_OpenFont("shlop.ttf", 28);
-    if (!f)
-        return -1;
-    SDL_Event e;
-    bool done = false;
-    char input[16] = {0};
-    int cursor = 0;
-    SDL_Rect cb = {SCREEN_WIDTH / 2 - 100, 400, 200, 50};
-    SDL_StartTextInput();
-    while (!done)
-    {
-        while (SDL_PollEvent(&e))
-        {
-            if (e.type == SDL_QUIT)
-            {
-                SDL_StopTextInput();
-                TTF_CloseFont(f);
-                return -1;
-            }
-            if (e.type == SDL_KEYDOWN)
-            {
-                if (e.key.keysym.sym == SDLK_RETURN && cursor > 0 && is_valid_ip(input))
-                {
-                    strncpy(ip_buffer, input, sz);
-                    done = true;
-                }
-                else if (e.key.keysym.sym == SDLK_BACKSPACE && cursor > 0)
-                {
-                    input[--cursor] = '\0';
-                }
-                else if (e.key.keysym.sym == SDLK_ESCAPE)
-                {
-                    SDL_StopTextInput();
-                    TTF_CloseFont(f);
-                    return -1;
-                }
-            }
-            if (e.type == SDL_TEXTINPUT && cursor < sizeof(input) - 1 && strchr("0123456789.", e.text.text[0]))
-            {
-                input[cursor++] = e.text.text[0];
-                input[cursor] = '\0';
-            }
-            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT)
-            {
-                int mx = e.button.x, my = e.button.y;
-                if (mx >= cb.x && mx <= cb.x + cb.w && my >= cb.y && my <= cb.y + cb.h && cursor > 0 && is_valid_ip(input))
-                {
-                    strncpy(ip_buffer, input, sz);
-                    done = true;
-                }
-            }
-        }
-        SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
-        SDL_RenderClear(r);
-        SDL_Color white = {255, 255, 255, 255};
-        SDL_Surface *ps = TTF_RenderText_Blended(f, "Enter Host IP (e.g., 127.0.0.1):", white);
-        if (ps)
-        {
-            SDL_Texture *pt = SDL_CreateTextureFromSurface(r, ps);
-            SDL_Rect pr = {SCREEN_WIDTH / 2 - ps->w / 2, 200, ps->w, ps->h};
-            SDL_RenderCopy(r, pt, NULL, &pr);
-            SDL_FreeSurface(ps);
-            SDL_DestroyTexture(pt);
-        }
-        SDL_Surface *is = TTF_RenderText_Blended(f, input[0] ? input : " ", white);
-        if (is)
-        {
-            SDL_Texture *it = SDL_CreateTextureFromSurface(r, is);
-            SDL_Rect ir = {SCREEN_WIDTH / 2 - is->w / 2, 250, is->w, is->h};
-            SDL_RenderCopy(r, it, NULL, &ir);
-            SDL_FreeSurface(is);
-            SDL_DestroyTexture(it);
-        }
-        SDL_SetRenderDrawColor(r, 180, 0, 0, 255);
-        SDL_RenderFillRect(r, &cb);
-        SDL_Surface *cs = TTF_RenderText_Blended(f, "Confirm", white);
-        if (cs)
-        {
-            SDL_Texture *ct = SDL_CreateTextureFromSurface(r, cs);
-            SDL_Rect cr = {cb.x + (cb.w - cs->w) / 2, cb.y + (cb.h - cs->h) / 2, cs->w, cs->h};
-            SDL_RenderCopy(r, ct, NULL, &cr);
-            SDL_FreeSurface(cs);
-            SDL_DestroyTexture(ct);
-        }
-        if (cursor > 0 && !is_valid_ip(input))
-        {
-            SDL_Surface *es = TTF_RenderText_Blended(f, "Invalid IP format", white);
-            if (es)
-            {
-                SDL_Texture *et = SDL_CreateTextureFromSurface(r, es);
-                SDL_Rect er = {SCREEN_WIDTH / 2 - es->w / 2, 300, es->w, es->h};
-                SDL_RenderCopy(r, et, NULL, &er);
-                SDL_FreeSurface(es);
-                SDL_DestroyTexture(et);
-            }
-        }
-        SDL_RenderPresent(r);
-        SDL_Delay(16);
-    }
-    SDL_StopTextInput();
-    TTF_CloseFont(f);
-    return 0;
-}
-
-int showConnectionScreen(SDL_Renderer *r, UDPsocket s, IPaddress *peer, bool host)
-{
-    TTF_Font *f = TTF_OpenFont("shlop.ttf", 28);
-    if (!f)
-        return -1;
-    SDL_Color white = {255, 255, 255, 255};
-    SDL_Event e;
-    bool connected = false;
-    Uint32 st = SDL_GetTicks(), lt = 0;
-    UDPpacket *p = SDLNet_AllocPacket(512);
-    if (!p)
-    {
-        TTF_CloseFont(f);
-        return -1;
-    }
-    const char *err = NULL;
-    while (!connected && (SDL_GetTicks() - st) < CONNECTION_TIMEOUT)
-    {
-        while (SDL_PollEvent(&e))
-            if (e.type == SDL_QUIT)
-            {
-                SDLNet_FreePacket(p);
-                TTF_CloseFont(f);
-                return -1;
-            }
-        Uint32 now = SDL_GetTicks();
-        if (host)
-        {
-            if (SDLNet_UDP_Recv(s, p))
-            {
-                Packet *pk = (Packet *)p->data;
-                if (pk->type == PACKET_HANDSHAKE && pk->id == 1 && pk->handshake.handshake == 0)
-                {
-                    peer->host = p->address.host;
-                    peer->port = p->address.port;
-                    Packet ack = {PACKET_HANDSHAKE, 0, .handshake = {1}};
-                    send_packet(s, *peer, &ack);
-                    connected = true;
-                }
-            }
-        }
-        else
-        {
-            if (now - lt >= 50)
-            {
-                Packet h = {PACKET_HANDSHAKE, 1, .handshake = {0}};
-                send_packet(s, *peer, &h);
-                lt = now;
-            }
-            if (SDLNet_UDP_Recv(s, p))
-            {
-                Packet *pk = (Packet *)p->data;
-                if (pk->type == PACKET_HANDSHAKE && pk->id == 0 && pk->handshake.handshake == 1)
-                    connected = true;
-            }
-        }
-        SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
-        SDL_RenderClear(r);
-        const char *msg = host ? "Waiting for client..." : "Connecting to host...";
-        SDL_Surface *srf = TTF_RenderText_Blended(f, msg, white);
-        if (srf)
-        {
-            SDL_Texture *t = SDL_CreateTextureFromSurface(r, srf);
-            SDL_Rect tr = {SCREEN_WIDTH / 2 - srf->w / 2, SCREEN_HEIGHT / 2 - srf->h / 2, srf->w, srf->h};
-            SDL_RenderCopy(r, t, NULL, &tr);
-            SDL_FreeSurface(srf);
-            SDL_DestroyTexture(t);
-        }
-        SDL_RenderPresent(r);
-        SDL_Delay(16);
-    }
-    if (!connected)
-    {
-        err = !host && peer->host == 0 ? "Invalid host IP address" : "Connection timed out";
-        SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
-        SDL_RenderClear(r);
-        SDL_Surface *es = TTF_RenderText_Blended(f, err, white);
-        if (es)
-        {
-            SDL_Texture *et = SDL_CreateTextureFromSurface(r, es);
-            SDL_Rect er = {SCREEN_WIDTH / 2 - es->w / 2, SCREEN_HEIGHT / 2 - es->h / 2, es->w, es->h};
-            SDL_RenderCopy(r, et, NULL, &er);
-            SDL_FreeSurface(es);
-            SDL_DestroyTexture(et);
-        }
-        SDL_RenderPresent(r);
-        SDL_Delay(2000);
-    }
-    SDLNet_FreePacket(p);
-    TTF_CloseFont(f);
-    return connected ? 0 : -1;
-}
-
-int showMenuScreen(SDL_Renderer *r, const char *title, const char *options[], int n)
-{
-    SDL_Event e;
+    SDL_Event event;
     bool inMenu = true;
-    int sel = 0;
-    SDL_Rect btn[n];
-    TTF_Font *f = TTF_OpenFont("shlop.ttf", 28), *tf = TTF_OpenFont("simbiot.ttf", 64);
-    if (!f || !tf)
-        return -1;
-    for (int i = 0; i < n; i++)
+    int selected = 0;
+    SDL_Rect buttons[3];
+    const char *labels[3] = {"Single Player", "Multiplayer", "Settings"};
+
+    TTF_Font *font = TTF_OpenFont("shlop.ttf", 28);
+    TTF_Font *titleFont = TTF_OpenFont("simbiot.ttf", 64);
+
+    for (int i = 0; i < 3; i++)
     {
-        btn[i] = (SDL_Rect){SCREEN_WIDTH / 2 - 100, 250 + i * 80, 200, 50};
+        buttons[i].x = SCREEN_WIDTH / 2 - 100;
+        buttons[i].y = 250 + i * 80;
+        buttons[i].w = 200;
+        buttons[i].h = 50;
     }
+
     while (inMenu)
     {
-        while (SDL_PollEvent(&e))
+        while (SDL_PollEvent(&event))
         {
-            if (e.type == SDL_QUIT)
-            {
-                TTF_CloseFont(f);
-                TTF_CloseFont(tf);
+            if (event.type == SDL_QUIT)
                 return -1;
-            }
-            if (e.type == SDL_KEYDOWN)
+            if (event.type == SDL_KEYDOWN)
             {
-                if (e.key.keysym.sym == SDLK_UP)
-                    sel = (sel + n - 1) % n;
-                if (e.key.keysym.sym == SDLK_DOWN)
-                    sel = (sel + 1) % n;
-                if (e.key.keysym.sym == SDLK_RETURN)
+                if (event.key.keysym.sym == SDLK_UP)
+                    selected = (selected + 2) % 3;
+                if (event.key.keysym.sym == SDLK_DOWN)
+                    selected = (selected + 1) % 3;
+                if (event.key.keysym.sym == SDLK_RETURN)
                 {
-                    inMenu = false;
-                    TTF_CloseFont(f);
-                    TTF_CloseFont(tf);
-                    return sel;
+                    if (selected == 2)
+                    { // Settings
+                        showSettings(renderer, window);
+                    }
+                    else
+                    {
+                        return selected;
+                    }
                 }
             }
-            if (e.type == SDL_MOUSEMOTION)
+            if (event.type == SDL_MOUSEMOTION)
             {
-                int mx = e.motion.x, my = e.motion.y;
-                for (int i = 0; i < n; i++)
-                    if (mx >= btn[i].x && mx <= btn[i].x + btn[i].w && my >= btn[i].y && my <= btn[i].y + btn[i].h)
-                        sel = i;
+                int mx = event.motion.x, my = event.motion.y;
+                for (int i = 0; i < 3; i++)
+                {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h)
+                        selected = i;
+                }
             }
-            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT)
+            if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
             {
-                int mx = e.button.x, my = e.button.y;
-                for (int i = 0; i < n; i++)
-                    if (mx >= btn[i].x && mx <= btn[i].x + btn[i].w && my >= btn[i].y && my <= btn[i].y + btn[i].h)
-                    {
-                        inMenu = false;
-                        TTF_CloseFont(f);
-                        TTF_CloseFont(tf);
+                int mx = event.button.x, my = event.button.y;
+                for (int i = 0; i < 3; i++)
+                {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h)
                         return i;
-                    }
+                }
             }
         }
-        SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
-        SDL_RenderClear(r);
-        SDL_Color red = {200, 0, 0, 255}, white = {255, 255, 255, 255};
-        SDL_Surface *ts = TTF_RenderText_Blended(tf, title, red);
-        if (ts)
-        {
-            SDL_Texture *tt = SDL_CreateTextureFromSurface(r, ts);
-            SDL_Rect tr = {SCREEN_WIDTH / 2 - ts->w / 2, 60, ts->w, ts->h};
-            SDL_RenderCopy(r, tt, NULL, &tr);
-            SDL_FreeSurface(ts);
-            SDL_DestroyTexture(tt);
-        }
-        for (int i = 0; i < n; i++)
-        {
-            SDL_SetRenderDrawColor(r, i == sel ? 180 : 90, 0, 0, 255);
-            SDL_RenderFillRect(r, &btn[i]);
-            SDL_Surface *s = TTF_RenderText_Blended(f, options[i], white);
-            if (s)
-            {
-                SDL_Texture *t = SDL_CreateTextureFromSurface(r, s);
-                SDL_Rect tr = {btn[i].x + (btn[i].w - s->w) / 2, btn[i].y + (btn[i].h - s->h) / 2, s->w, s->h};
-                SDL_RenderCopy(r, t, NULL, &tr);
-                SDL_FreeSurface(s);
-                SDL_DestroyTexture(t);
-            }
-        }
-        SDL_RenderPresent(r);
-        SDL_Delay(16);
-    }
-    TTF_CloseFont(f);
-    TTF_CloseFont(tf);
-    return -1;
-}
 
-int showSettings(SDL_Renderer *r, SDL_Window *w)
-{
-    SDL_Event e;
-    bool inSettings = true;
-    TTF_Font *f = TTF_OpenFont("shlop.ttf", 28), *tf = TTF_OpenFont("simbiot.ttf", 48);
-    if (!f || !tf)
-        return -1;
-    while (inSettings)
-    {
-        while (SDL_PollEvent(&e))
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        if (titleFont)
         {
-            if (e.type == SDL_QUIT)
-                return -1;
-            if (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_RETURN))
-                inSettings = false;
+            SDL_Color red = {200, 0, 0};
+            SDL_Surface *titleSurface = TTF_RenderText_Blended(titleFont, "Zombie Game", red);
+            SDL_Texture *titleTexture = SDL_CreateTextureFromSurface(renderer, titleSurface);
+            SDL_Rect titleRect = {SCREEN_WIDTH / 2 - titleSurface->w / 2, 60, titleSurface->w, titleSurface->h};
+            SDL_RenderCopy(renderer, titleTexture, NULL, &titleRect);
+            SDL_FreeSurface(titleSurface);
+            SDL_DestroyTexture(titleTexture);
         }
-        SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
-        SDL_RenderClear(r);
-        SDL_Color white = {255, 255, 255, 255};
-        SDL_Surface *ts = TTF_RenderText_Blended(tf, "Settings", white);
-        if (ts)
+
+        for (int i = 0; i < 3; i++)
         {
-            SDL_Texture *tt = SDL_CreateTextureFromSurface(r, ts);
-            SDL_Rect tr = {SCREEN_WIDTH / 2 - ts->w / 2, 50, ts->w, ts->h};
-            SDL_RenderCopy(r, tt, NULL, &tr);
-            SDL_FreeSurface(ts);
-            SDL_DestroyTexture(tt);
+            SDL_SetRenderDrawColor(renderer, (i == selected) ? 180 : 90, 0, 0, 255);
+            SDL_RenderFillRect(renderer, &buttons[i]);
+
+            SDL_Color color = {255, 255, 255};
+            SDL_Surface *surface = TTF_RenderText_Blended(font, labels[i], color);
+            SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_Rect textRect = {
+                buttons[i].x + (buttons[i].w - surface->w) / 2,
+                buttons[i].y + (buttons[i].h - surface->h) / 2,
+                surface->w,
+                surface->h};
+            SDL_RenderCopy(renderer, texture, NULL, &textRect);
+            SDL_FreeSurface(surface);
+            SDL_DestroyTexture(texture);
         }
-        SDL_Surface *vs = TTF_RenderText_Blended(f, "Volume", white);
-        if (vs)
-        {
-            SDL_Texture *vt = SDL_CreateTextureFromSurface(r, vs);
-            SDL_Rect vr = {100, 180, vs->w, vs->h};
-            SDL_RenderCopy(r, vt, NULL, &vr);
-            SDL_FreeSurface(vs);
-            SDL_DestroyTexture(vt);
-        }
-        SDL_RenderPresent(r);
+
+        SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
-    TTF_CloseFont(f);
-    TTF_CloseFont(tf);
+
+    TTF_CloseFont(titleFont);
+    TTF_CloseFont(font);
     return 0;
 }
 
-void handle_network(UDPsocket s, Player *lp, int *ls, Player *rp, Bullet b[], Mob m[], Powerup p[], int *rl, int *rs, float *rspeed, int *rdmg, ActiveEffects *le, ActiveEffects *re)
+int showSettings(SDL_Renderer *renderer, SDL_Window *window)
 {
-    UDPpacket *pkt = SDLNet_AllocPacket(512);
-    if (!pkt)
-        return;
-    while (SDLNet_UDP_Recv(s, pkt))
+    SDL_Event event;
+    bool inSettings = true;
+    TTF_Font *font = TTF_OpenFont("shlop.ttf", 28);
+    TTF_Font *titleFont = TTF_OpenFont("simbiot.ttf", 48);
+
+    if (!font || !titleFont)
     {
-        Packet *pk = (Packet *)pkt->data;
-        if (pk->id != local_player_id || pk->type == PACKET_GAME_STATE)
+        SDL_Log("Misslyckades med att ladda font i inställningsmeny: %s", TTF_GetError());
+        return 0;
+    }
+
+    while (inSettings)
+    {
+        while (SDL_PollEvent(&event))
         {
-            switch (pk->type)
+            if (event.type == SDL_QUIT)
+                return -1;
+            if (event.type == SDL_KEYDOWN)
             {
-            case PACKET_PLAYER_POS:
-                rp->rect.x = (int)pk->pos.x;
-                rp->rect.y = (int)pk->pos.y;
-                rp->angle = pk->pos.angle;
-                break;
-            case PACKET_BULLET:
-                for (int i = 0; i < MAX_BULLETS; i++)
-                    if (!b[i].active || (b[i].rect.x == (int)pk->bullet.x && b[i].rect.y == (int)pk->bullet.y))
-                    {
-                        b[i].rect.x = (int)pk->bullet.x;
-                        b[i].rect.y = (int)pk->bullet.y;
-                        b[i].rect.w = BULLET_SIZE;
-                        b[i].rect.h = BULLET_SIZE;
-                        b[i].dx = pk->bullet.dx;
-                        b[i].dy = pk->bullet.dy;
-                        b[i].active = pk->bullet.active;
-                        b[i].owner = pk->id;
-                        break;
-                    }
-                break;
-            case PACKET_MOB_UPDATE:
-                if (!is_host && pk->mob.index >= 0 && pk->mob.index < MAX_MOBS)
+                if (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_RETURN)
                 {
-                    m[pk->mob.index].rect.x = (int)pk->mob.x;
-                    m[pk->mob.index].rect.y = (int)pk->mob.y;
-                    m[pk->mob.index].rect.w = pk->mob.w;
-                    m[pk->mob.index].rect.h = pk->mob.h;
-                    m[pk->mob.index].active = pk->mob.active;
-                    m[pk->mob.index].health = pk->mob.health;
-                    m[pk->mob.index].type = pk->mob.type;
+                    inSettings = false; // Gå tillbaka till menyn
                 }
-                break;
-            case PACKET_POWERUP_UPDATE:
-                if (pk->powerup.index >= 0 && pk->powerup.index < MAX_POWERUPS)
-                {
-                    p[pk->powerup.index].active = pk->powerup.active;
-                    p[pk->powerup.index].picked_up = pk->powerup.picked_up;
-                    p[pk->powerup.index].type = pk->powerup.type;
-                    p[pk->powerup.index].rect.x = (int)pk->powerup.x;
-                    p[pk->powerup.index].rect.y = (int)pk->powerup.y;
-                    p[pk->powerup.index].rect.w = 32;
-                    p[pk->powerup.index].rect.h = 32;
-                    p[pk->powerup.index].pickup_time = SDL_GetTicks();
-                    if (p[pk->powerup.index].picked_up && !p[pk->powerup.index].sound_played)
-                    {
-                        switch (p[pk->powerup.index].type)
-                        {
-                        case POWERUP_EXTRA_LIFE:
-                            play_sound(SOUND_EXTRALIFE);
-                            break;
-                        case POWERUP_SPEED_BOOST:
-                            play_sound(SOUND_SPEED);
-                            break;
-                        case POWERUP_FREEZE_ENEMIES:
-                            play_sound(SOUND_FREEZE);
-                            break;
-                        case POWERUP_DOUBLE_DAMAGE:
-                            play_sound(SOUND_DAMAGE);
-                            break;
-                        }
-                        p[pk->powerup.index].sound_played = true;
-                    }
-                    if (is_host && pk->id == 1 && pk->powerup.picked_up)
-                    {
-                        apply_powerup_effect(&p[pk->powerup.index], rp, re, SDL_GetTicks());
-                        Packet sp = {PACKET_GAME_STATE, 1, .state = {rp->lives, *rs, rp->speed, rp->damage}};
-                        send_packet(s, pkt->address, &sp);
-                        Packet pp = {PACKET_POWERUP_UPDATE, 0, .powerup = {pk->powerup.index, p[pk->powerup.index].active, p[pk->powerup.index].picked_up, p[pk->powerup.index].type, (float)p[pk->powerup.index].rect.x, (float)p[pk->powerup.index].rect.y}};
-                        send_packet(s, pkt->address, &pp);
-                    }
-                }
-                break;
-            case PACKET_GAME_STATE:
-                if (pk->id == local_player_id)
-                {
-                    lp->lives = pk->state.lives;
-                    *ls = pk->state.score;
-                    lp->speed = pk->state.speed;
-                    lp->damage = pk->state.damage;
-                }
-                else
-                {
-                    rp->lives = pk->state.lives;
-                    *rs = pk->state.score;
-                    rp->speed = pk->state.speed;
-                    rp->damage = pk->state.damage;
-                }
-                break;
             }
         }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        // --- Rubrik: Settings ---
+        SDL_Color white = {255, 255, 255};
+        SDL_Surface *titleSurface = TTF_RenderText_Blended(titleFont, "Settings", white);
+        SDL_Texture *titleTexture = SDL_CreateTextureFromSurface(renderer, titleSurface);
+        SDL_Rect titleRect = {SCREEN_WIDTH / 2 - titleSurface->w / 2, 50, titleSurface->w, titleSurface->h};
+        SDL_RenderCopy(renderer, titleTexture, NULL, &titleRect);
+        SDL_FreeSurface(titleSurface);
+        SDL_DestroyTexture(titleTexture);
+
+        // --- Volym-rubrik till vänster ---
+        SDL_Surface *volumeSurface = TTF_RenderText_Blended(font, "Volume", white);
+        SDL_Texture *volumeTexture = SDL_CreateTextureFromSurface(renderer, volumeSurface);
+        SDL_Rect volumeRect = {100, 180, volumeSurface->w, volumeSurface->h};
+        SDL_RenderCopy(renderer, volumeTexture, NULL, &volumeRect);
+        SDL_FreeSurface(volumeSurface);
+        SDL_DestroyTexture(volumeTexture);
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
     }
-    SDLNet_FreePacket(pkt);
+
+    TTF_CloseFont(font);
+    TTF_CloseFont(titleFont);
+    return 0;
+}
+
+int showGameOver(SDL_Renderer *renderer)
+{
+    SDL_Event event;
+    bool inGameOver = true;
+    int selected = 0;
+    SDL_Rect buttons[3];
+    const char *labels[3] = {"Play Again", "Main Menu", "Exit Game"};
+
+    TTF_Font *optionFont = TTF_OpenFont("shlop.ttf", 28);
+    TTF_Font *titleFont = TTF_OpenFont("simbiot.ttf", 64);
+
+    for (int i = 0; i < 3; i++)
+    {
+        buttons[i].x = SCREEN_WIDTH / 2 - 100;
+        buttons[i].y = 250 + i * 80;
+        buttons[i].w = 200;
+        buttons[i].h = 50;
+    }
+
+    while (inGameOver)
+    {
+        while (SDL_PollEvent(&event))
+        {
+            if (event.type == SDL_QUIT)
+                return 2;
+            if (event.type == SDL_KEYDOWN)
+            {
+                if (event.key.keysym.sym == SDLK_UP)
+                    selected = (selected + 2) % 3;
+                if (event.key.keysym.sym == SDLK_DOWN)
+                    selected = (selected + 1) % 3;
+                if (event.key.keysym.sym == SDLK_RETURN)
+                    return selected;
+            }
+            if (event.type == SDL_MOUSEMOTION)
+            {
+                int mx = event.motion.x, my = event.motion.y;
+                for (int i = 0; i < 3; i++)
+                {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h)
+                        selected = i;
+                }
+            }
+            if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
+            {
+                int mx = event.button.x, my = event.button.y;
+                for (int i = 0; i < 3; i++)
+                {
+                    if (mx >= buttons[i].x && mx <= buttons[i].x + buttons[i].w &&
+                        my >= buttons[i].y && my <= buttons[i].y + buttons[i].h)
+                        return i;
+                }
+            }
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        if (titleFont)
+        {
+            SDL_Color red = {200, 0, 0};
+            SDL_Surface *titleSurface = TTF_RenderText_Blended(titleFont, "GAME OVER", red);
+            SDL_Texture *titleTexture = SDL_CreateTextureFromSurface(renderer, titleSurface);
+            SDL_Rect titleRect = {SCREEN_WIDTH / 2 - titleSurface->w / 2, 60, titleSurface->w, titleSurface->h};
+            SDL_RenderCopy(renderer, titleTexture, NULL, &titleRect);
+            SDL_FreeSurface(titleSurface);
+            SDL_DestroyTexture(titleTexture);
+        }
+
+        for (int i = 0; i < 3; i++)
+        {
+            SDL_SetRenderDrawColor(renderer, (i == selected) ? 180 : 90, 0, 0, 255);
+            SDL_RenderFillRect(renderer, &buttons[i]);
+
+            SDL_Color color = {255, 255, 255};
+            SDL_Surface *surface = TTF_RenderText_Blended(optionFont, labels[i], color);
+            SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_Rect textRect = {
+                buttons[i].x + (buttons[i].w - surface->w) / 2,
+                buttons[i].y + (buttons[i].h - surface->h) / 2,
+                surface->w,
+                surface->h};
+            SDL_RenderCopy(renderer, texture, NULL, &textRect);
+            SDL_FreeSurface(surface);
+            SDL_DestroyTexture(texture);
+        }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+
+    TTF_CloseFont(optionFont);
+    TTF_CloseFont(titleFont);
+    return 0;
 }
 
 int main(int argc, char *argv[])
 {
-    UDPsocket udp_socket = NULL;
-    IPaddress peer;
-    if (SDL_Init(SDL_INIT_VIDEO) < 0 || SDLNet_Init() < 0 || !(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG) || TTF_Init() == -1)
+    // Initiera SDL2 och SDL_image
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    {
+        SDL_Log("SDL kunde inte initieras: %s", SDL_GetError());
         return 1;
+    }
+    if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG))
+    {
+        SDL_Log("SDL_image kunde inte initieras: %s", IMG_GetError());
+        return 1;
+    }
 
-    SDL_Window *w = SDL_CreateWindow("Zombie Game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-    SDL_Renderer *r = SDL_CreateRenderer(w, -1, SDL_RENDERER_ACCELERATED);
-    if (!w || !r)
+    if (TTF_Init() == -1)
+    {
+        SDL_Log("SDL_ttf init error: %s", TTF_GetError());
+        SDL_Quit();
         return 1;
+    }
+
+    SDL_Window *window = SDL_CreateWindow("Zombie Game",
+                                          SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                          SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    if (!window)
+    {
+        SDL_Log("Fönster kunde inte skapas: %s", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (!renderer)
+    {
+        SDL_Log("Renderer kunde inte skapas: %s", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+    TTF_Font *uiFont = TTF_OpenFont("shlop.ttf", 28);
+    if (!uiFont)
+    {
+        SDL_Log("Misslyckades ladda font för meny: %s", TTF_GetError());
+        // Städa upp innan exit
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        TTF_Quit();
+        IMG_Quit();
+        SDL_Quit();
+        return 1;
+    }
+
+    NetMode mode = show_multiplayer_menu(renderer, uiFont);
+
+    char *roomID = NULL;
+    if (mode == MODE_HOST)
+    {
+        // Exempel: låt host välja eller hårdkoda
+        roomID = strdup("game123");
+    }
+    else if (mode == MODE_JOIN)
+    {
+        // Be användaren mata in just room‐ID:t
+        roomID = prompt_for_ip(renderer, uiFont); // byt prompt‐text till "Enter room ID:"
+    }
+
+    if (network_init(mode, RENDEZVOUS_HOST, roomID) < 0)
+    {
+        SDL_Log("Network init failed");
+        return 1;
+    }
+
+    skipMenu = true;
+
+    Player playerLocal = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2,
+                                       PLAYER_SIZE, DEFAULT_PLAYER_SPEED,
+                                       DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
+    Player playerRemote = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2,
+                                        PLAYER_SIZE, DEFAULT_PLAYER_SPEED,
+                                        DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
+    playerRemote.tint = (SDL_Color){200, 80, 80, 255};
+
+    if (mode == MODE_JOIN)
+    {
+        // Skicka ett första paket för att hostens wait_for_client() ska snappa upp dig
+        network_send(playerLocal.rect.x, playerLocal.rect.y, playerLocal.aim_angle);
+    }
 
     init_sound();
+
     play_music("source/spelmusik.wav");
 
-    int mr = skipMenu ? 0 : showMenuScreen(r, "Zombie Game", (const char *[]){"Single Player", "Multiplayer", "Settings"}, 3);
-    if (mr == 0)
+    if (!skipMenu)
     {
-        is_multiplayer = false;
-        is_host = true;
-        local_player_id = 0;
-    }
-    else if (mr == 1)
-    {
-        is_multiplayer = true;
-        int mpr = showMenuScreen(r, "Multiplayer", (const char *[]){"Host Game", "Join Game", "Back"}, 3);
-        if (mpr == 0)
+        int menuResult = showMenu(renderer, window);
+        if (menuResult != 0)
         {
-            is_host = true;
-            local_player_id = 0;
-            SDLNet_ResolveHost(&peer, NULL, UDP_PORT);
-        }
-        else if (mpr == 1)
-        {
-            is_host = false;
-            local_player_id = 1;
-            char peer_ip[16] = {0};
-            if (showIPInputScreen(r, peer_ip, sizeof(peer_ip)) != 0 || !is_valid_ip(peer_ip) || SDLNet_ResolveHost(&peer, peer_ip, UDP_PORT) != 0)
-            {
-                SDL_DestroyRenderer(r);
-                SDL_DestroyWindow(w);
-                TTF_Quit();
-                IMG_Quit();
-                SDL_Quit();
-                return 0;
-            }
-        }
-        else
-        {
-            SDL_DestroyRenderer(r);
-            SDL_DestroyWindow(w);
+            SDL_DestroyRenderer(renderer);
+            SDL_DestroyWindow(window);
             TTF_Quit();
             IMG_Quit();
             SDL_Quit();
             return 0;
         }
-        udp_socket = SDLNet_UDP_Open(is_host ? UDP_PORT : 0);
-        if (!udp_socket || showConnectionScreen(r, udp_socket, &peer, is_host) != 0)
-        {
-            if (udp_socket)
-                SDLNet_UDP_Close(udp_socket);
-            SDL_DestroyRenderer(r);
-            SDL_DestroyWindow(w);
-            TTF_Quit();
-            IMG_Quit();
-            SDL_Quit();
-            return 1;
-        }
     }
-    else if (mr == 2)
-        showSettings(r, w);
-    else
+
+    // Ladda in powerup-texturer (variablerna tex_extralife, etc. definieras i powerups.c som externa)
+    tex_extralife = IMG_LoadTexture(renderer, "resources/extralife.png");
+    tex_extraspeed = IMG_LoadTexture(renderer, "resources/extraspeed.png");
+    tex_doubledamage = IMG_LoadTexture(renderer, "resources/doubledamage.png");
+    tex_freezeenemies = IMG_LoadTexture(renderer, "resources/freezeenemies.png");
+
+    tex_tiles = IMG_LoadTexture(renderer, "resources/tiles.png");
+    if (!tex_tiles)
     {
-        SDL_DestroyRenderer(r);
-        SDL_DestroyWindow(w);
+        SDL_Log("Kunde inte ladda in tilesheet: %s", SDL_GetError());
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    tex_player = IMG_LoadTexture(renderer, "resources/hitman1.png");
+    if (!tex_player)
+    {
+        SDL_Log("Kunde inte ladda in spelartextur: %s", SDL_GetError());
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    tex_mob = IMG_LoadTexture(renderer, "resources/zombie1.png");
+    if (!tex_mob)
+    {
+        SDL_Log("Kunde inte ladda in fiendetextur: %s", SDL_GetError());
+        SDL_DestroyTexture(tex_player); // du har laddat spelartestur innan
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
         TTF_Quit();
         IMG_Quit();
         SDL_Quit();
-        return 0;
+        return 1;
     }
 
-    tex_player = IMG_LoadTexture(r, "resources/hitman1.png");
-    tex_mob = IMG_LoadTexture(r, "resources/zombie1.png");
-    tex_tiles = IMG_LoadTexture(r, "resources/tiles.png");
-    tex_extralife = IMG_LoadTexture(r, "resources/extralife.png");
-    tex_extraspeed = IMG_LoadTexture(r, "resources/extraspeed.png");
-    tex_doubledamage = IMG_LoadTexture(r, "resources/doubledamage.png");
-    tex_freezeenemies = IMG_LoadTexture(r, "resources/freezeenemies.png");
-    if (!tex_player || !tex_mob || !tex_tiles || !tex_extralife || !tex_extraspeed || !tex_doubledamage || !tex_freezeenemies)
+    if (!tex_extralife || !tex_extraspeed || !tex_doubledamage)
+    {
+        SDL_Log("Kunde inte ladda in powerup-texturer: %s", SDL_GetError());
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
         return 1;
+    }
 
     srand((unsigned int)time(NULL));
-    Player lp = create_player(SCREEN_WIDTH / 2 - 50, SCREEN_HEIGHT / 2, PLAYER_SIZE, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
-    Player rp = create_player(SCREEN_WIDTH / 2 + 50, SCREEN_HEIGHT / 2, PLAYER_SIZE, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
-    int ls = 0, rs = 0;
-    float rspeed = DEFAULT_PLAYER_SPEED;
-    int rdmg = DEFAULT_PLAYER_DAMAGE;
-    Bullet b[MAX_BULLETS] = {0};
-    Mob m[MAX_MOBS] = {0};
-    Powerup p[MAX_POWERUPS] = {0};
 
-    if (is_host)
+    // Skapa spelaren via Player-ADT; DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE och MAX_HEALTH ska vara definierade (här antas de komma från powerups.h)
+    // Player player = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, PLAYER_SIZE, DEFAULT_PLAYER_SPEED, DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
+
+    // Skapa bullets, mobs och powerups
+    Bullet bullets[MAX_BULLETS] = {0};
+    Mob mobs[MAX_MOBS];
+    for (int i = 0; i < MAX_MOBS; i++)
     {
-        for (int i = 0; i < MAX_MOBS; i++)
+        int x, y, type, health;
+        do
         {
-            int x, y, type = rand() % 4, health = (type == 3) ? 2 : 1;
-            do
-            {
-                x = rand() % (SCREEN_WIDTH - MOB_SIZE);
-                y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
-                m[i] = create_mob(x, y, MOB_SIZE, type, health);
-            } while (check_mob_collision(&m[i].rect, m, i));
-            if (is_multiplayer)
-            {
-                Packet mp = {PACKET_MOB_UPDATE, local_player_id, .mob = {i, (float)m[i].rect.x, (float)m[i].rect.y, m[i].rect.w, m[i].rect.h, m[i].active, m[i].health, m[i].type}};
-                send_packet(udp_socket, peer, &mp);
-            }
-        }
-        for (int i = 0; i < MAX_POWERUPS; i++)
-        {
-            p[i] = create_powerup(rand() % 4, rand() % (SCREEN_WIDTH - 32), rand() % (SCREEN_HEIGHT - 32));
-            if (is_multiplayer)
-            {
-                Packet pp = {PACKET_POWERUP_UPDATE, local_player_id, .powerup = {i, p[i].active, p[i].picked_up, p[i].type, (float)p[i].rect.x, (float)p[i].rect.y}};
-                send_packet(udp_socket, peer, &pp);
-            }
-        }
-    }
-    else
-    {
-        for (int i = 0; i < MAX_MOBS; i++)
-            m[i].active = false;
-        for (int i = 0; i < MAX_POWERUPS; i++)
-            p[i].active = p[i].picked_up = false;
+            x = rand() % (SCREEN_WIDTH - MOB_SIZE);
+            y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
+            type = rand() % 4; // Antag 4 typer
+            health = (type == 3) ? 2 : 1;
+            mobs[i] = create_mob(x, y, MOB_SIZE, type, health);
+        } while (check_mob_collision(&mobs[i].rect, mobs, i));
     }
 
-    bool run = true;
-    SDL_Event e;
-    bool sp = false;
-    ActiveEffects le = {0}, re = {0};
-    Uint32 now, lmst = 0, lpst = 0;
-
-    while (run)
+    Powerup powerups[MAX_POWERUPS];
+    for (int i = 0; i < MAX_POWERUPS; i++)
     {
-        while (SDL_PollEvent(&e))
+        PowerupType t = rand() % 4;
+        int x = rand() % (SCREEN_WIDTH - 32);
+        int y = rand() % (SCREEN_HEIGHT - 32);
+        powerups[i] = create_powerup(t, x, y);
+    }
+
+    int score = 0;
+
+    Uint32 freeze_timer = 0;
+
+    bool running = true;
+    SDL_Event event;
+    bool spacePressed = false;
+    ActiveEffects effects = {false, 0, false, 0};
+
+    Uint32 now, last_mob_spawn_time = 0, last_powerup_spawn_time = 0;
+
+    if (mode == MODE_HOST)
+    {
+        wait_for_client(renderer, uiFont);
+
+        // Skicka befintliga mobs
+        for (int i = 0; i < MAX_MOBS; i++)
+            if (mobs[i].active)
+                network_send_spawn_mob(i,
+                                       mobs[i].rect.x, mobs[i].rect.y,
+                                       mobs[i].type, mobs[i].health);
+
+        // Skicka befintliga powerups
+        for (int i = 0; i < MAX_POWERUPS; i++)
+            if (powerups[i].active)
+                network_send_spawn_powerup(i,
+                                           powerups[i].rect.x, powerups[i].rect.y,
+                                           powerups[i].type);
+    }
+
+    // Spel-loop
+    while (running)
+    {
+        while (SDL_PollEvent(&event))
         {
-            if (e.type == SDL_QUIT)
-                run = false;
-            if ((e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) || (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDL_SCANCODE_SPACE && !sp))
+            if (event.type == SDL_QUIT)
+            {
+                running = false;
+            }
+            if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
+            {
+                int mx, my;
+                SDL_GetMouseState(&mx, &my);
+                // Skjut en bullet med spelarens damage
+                // (Skjutfunktionen finns i main, vi använder lokala bullets array)
+                for (int i = 0; i < MAX_BULLETS; i++)
+                {
+                    if (!bullets[i].active)
+                    {
+                        bullets[i].rect.x = playerLocal.rect.x + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
+                        bullets[i].rect.y = playerLocal.rect.y + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
+
+                        bullets[i].rect.w = BULLET_SIZE;
+                        bullets[i].rect.h = BULLET_SIZE;
+                        bullets[i].active = true;
+
+                        // 1) Räkna ut rörelseriktning först
+                        {
+                            float dx = (float)mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
+                            float dy = (float)my - (playerLocal.rect.y + PLAYER_SIZE / 2);
+                            float length = sqrtf(dx * dx + dy * dy);
+                            bullets[i].dx = BULLET_SPEED * (dx / length);
+                            bullets[i].dy = BULLET_SPEED * (dy / length);
+                        }
+
+                        // 2) Skicka kulan med rätt dx/dy
+                        network_send_fire_bullet(
+                            i,
+                            bullets[i].rect.x, bullets[i].rect.y,
+                            bullets[i].dx, bullets[i].dy);
+
+                        play_sound(SOUND_SHOOT);
+                        break;
+                    }
+                }
+            }
+        }
+
+        const Uint8 *state = SDL_GetKeyboardState(NULL);
+
+        while (SDLNet_UDP_Recv(netSocket, pktIn))
+        {
+            Uint8 msg = pktIn->data[0];
+            int off = 1;
+            if (msg == MSG_POS)
+            {
+                int rx, ry;
+                float rang;
+                memcpy(&rx, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&ry, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&rang, pktIn->data + off, sizeof(float));
+                off += sizeof(float);
+                playerRemote.rect.x = rx;
+                playerRemote.rect.y = ry;
+                playerRemote.aim_angle = rang;
+            }
+            else if (msg == MSG_SPAWN_MOB)
+            {
+                int idx, x, y, type, health;
+                memcpy(&idx, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&x, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&y, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&type, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&health, pktIn->data + off, sizeof(int));
+                if (idx >= 0 && idx < MAX_MOBS)
+                    mobs[idx] = create_mob(x, y, MOB_SIZE, type, health);
+            }
+            else if (msg == MSG_SPAWN_PWR)
+            {
+                int idx, x, y, ptype;
+                memcpy(&idx, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&x, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&y, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&ptype, pktIn->data + off, sizeof(int));
+                if (idx >= 0 && idx < MAX_POWERUPS)
+                    powerups[idx] = create_powerup(ptype, x, y);
+            }
+            else if (msg == MSG_FIRE_BULLET)
+            {
+                int idx, x, y;
+                float dx, dy;
+
+                memcpy(&idx, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&x, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&y, pktIn->data + off, sizeof(int));
+                off += sizeof(int);
+                memcpy(&dx, pktIn->data + off, sizeof(float));
+                off += sizeof(float);
+                memcpy(&dy, pktIn->data + off, sizeof(float));
+                off += sizeof(float);
+
+                bullets[idx].rect.x = x;
+                bullets[idx].rect.y = y;
+                bullets[idx].dx = dx;
+                bullets[idx].dy = dy;
+                bullets[idx].rect.w = BULLET_SIZE;
+                bullets[idx].rect.h = BULLET_SIZE;
+                bullets[idx].active = true;
+            }
+
+            else if (msg == MSG_REMOVE_PWR)
+            {
+                int idx;
+                memcpy(&idx, pktIn->data + 1, sizeof(int));
+                if (idx >= 0 && idx < MAX_POWERUPS)
+                    powerups[idx].active = false;
+            }
+
+            else if (msg == MSG_REMOVE_MOB)
+            {
+                int idx;
+                memcpy(&idx, pktIn->data + 1, sizeof(int));
+                if (idx >= 0 && idx < MAX_MOBS)
+                    mobs[idx].active = false;
+            }
+            else if (msg == MSG_REMOVE_BULLET)
+            {
+                int idx;
+                memcpy(&idx, pktIn->data + 1, sizeof(int));
+                if (idx >= 0 && idx < MAX_BULLETS)
+                    bullets[idx].active = false;
+            }
+        }
+        update_player(&playerLocal, state);
+
+        int mx, my;
+        SDL_GetMouseState(&mx, &my);
+        float dx = mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
+        float dy = my - (playerLocal.rect.y + PLAYER_SIZE / 2);
+        playerLocal.aim_angle = atan2f(dy, dx) * 180.0f / (float)M_PI;
+        network_send(playerLocal.rect.x, playerLocal.rect.y, playerLocal.aim_angle);
+        network_send(playerLocal.rect.x, playerLocal.rect.y, playerLocal.aim_angle);
+
+        if (state[SDL_SCANCODE_SPACE])
+        {
+            if (!spacePressed)
             {
                 int mx, my;
                 SDL_GetMouseState(&mx, &my);
                 for (int i = 0; i < MAX_BULLETS; i++)
                 {
-                    if (!b[i].active)
+                    if (!bullets[i].active)
                     {
-                        b[i].rect.x = lp.rect.x + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
-                        b[i].rect.y = lp.rect.y + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
-                        b[i].rect.w = BULLET_SIZE;
-                        b[i].rect.h = BULLET_SIZE;
-                        b[i].active = true;
-                        b[i].owner = local_player_id;
-                        float dx = (float)mx - (lp.rect.x + PLAYER_SIZE / 2), dy = (float)my - (lp.rect.y + PLAYER_SIZE / 2);
-                        float len = sqrtf(dx * dx + dy * dy);
-                        b[i].dx = len > 0 ? BULLET_SPEED * (dx / len) : BULLET_SPEED;
-                        b[i].dy = len > 0 ? BULLET_SPEED * (dy / len) : 0;
-                        play_sound(SOUND_SHOOT);
-                        if (is_multiplayer)
+                        bullets[i].rect.x = playerLocal.rect.x + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
+                        bullets[i].rect.y = playerLocal.rect.y + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
+                        bullets[i].rect.w = BULLET_SIZE;
+                        bullets[i].rect.h = BULLET_SIZE;
+                        bullets[i].active = true;
+
+                        // 1) Beräkna dx/dy
                         {
-                            Packet bp = {PACKET_BULLET, local_player_id, .bullet = {(float)b[i].rect.x, (float)b[i].rect.y, b[i].dx, b[i].dy, b[i].active}};
-                            send_packet(udp_socket, peer, &bp);
+                            float dx = (float)mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
+                            float dy = (float)my - (playerLocal.rect.y + PLAYER_SIZE / 2);
+                            float length = sqrtf(dx * dx + dy * dy);
+                            bullets[i].dx = BULLET_SPEED * (dx / length);
+                            bullets[i].dy = BULLET_SPEED * (dy / length);
                         }
-                        if (e.type == SDL_KEYDOWN)
-                            sp = true;
+
+                        // 2) Skicka med korrekta värden
+                        network_send_fire_bullet(
+                            i,
+                            bullets[i].rect.x, bullets[i].rect.y,
+                            bullets[i].dx, bullets[i].dy);
+
+                        play_sound(SOUND_SHOOT);
                         break;
                     }
                 }
+                spacePressed = true;
             }
-            if (e.type == SDL_KEYUP && e.key.keysym.sym == SDL_SCANCODE_SPACE)
-                sp = false;
+        }
+        else
+        {
+            spacePressed = false;
         }
 
-        update_player(&lp, SDL_GetKeyboardState(NULL));
-        if (is_multiplayer)
+        // Kollision och attack‑hantering mellan spelare och mobs
+        for (int i = 0; i < MAX_MOBS; i++)
         {
-            int mx, my;
-            SDL_GetMouseState(&mx, &my);
-            float dx = (float)mx - (lp.rect.x + PLAYER_SIZE / 2), dy = (float)my - (lp.rect.y + PLAYER_SIZE / 2);
-            float angle = atan2f(dy, dx) * 180.0f / M_PI;
-            Packet pp = {PACKET_PLAYER_POS, local_player_id, .pos = {(float)lp.rect.x, (float)lp.rect.y, angle}};
-            send_packet(udp_socket, peer, &pp);
-            handle_network(udp_socket, &lp, &ls, &rp, b, m, p, &rp.lives, &rs, &rspeed, &rdmg, &le, &re);
-        }
+            if (!mobs[i].active)
+                continue;
 
-        now = SDL_GetTicks();
-        if (is_host)
-        {
-            for (int i = 0; i < MAX_MOBS; i++)
+            if (mobs[i].attacking)
             {
-                if (m[i].active)
+                Uint32 now = SDL_GetTicks();
+                // Slå bara om attack_interval passerat
+                if (now - mobs[i].last_attack_time >= mobs[i].attack_interval)
                 {
-                    if (!le.freeze_active && !re.freeze_active)
-                        update_mob(&m[i], lp.rect, rp.rect, is_multiplayer);
-                    if (m[i].attacking && now - m[i].last_attack_time >= m[i].attack_interval)
+                    if (mobs[i].type == 3)
                     {
-                        float dl = sqrtf(powf(lp.rect.x + lp.rect.w / 2 - (m[i].rect.x + m[i].rect.w / 2), 2) + powf(lp.rect.y + lp.rect.h / 2 - (m[i].rect.y + m[i].rect.h / 2), 2));
-                        float dr = sqrtf(powf(rp.rect.x + rp.rect.w / 2 - (m[i].rect.x + m[i].rect.w / 2), 2) + powf(rp.rect.y + rp.rect.h / 2 - (m[i].rect.y + m[i].rect.h / 2), 2));
-                        if (is_multiplayer && dr < dl)
-                            rp.lives -= (m[i].type == 3) ? 2 : 1;
-                        else
-                            lp.lives -= (m[i].type == 3) ? 2 : 1;
-                        if (lp.lives < 0)
-                            lp.lives = 0;
-                        if (rp.lives < 0)
-                            rp.lives = 0;
-                        m[i].last_attack_time = now;
-                        if (is_multiplayer)
-                        {
-                            Packet spl = {PACKET_GAME_STATE, 0, .state = {lp.lives, ls, lp.speed, lp.damage}};
-                            Packet spr = {PACKET_GAME_STATE, 1, .state = {rp.lives, rs, rp.speed, rp.damage}};
-                            send_packet(udp_socket, peer, &spl);
-                            send_packet(udp_socket, peer, &spr);
-                        }
+                        playerLocal.lives -= 2;
                     }
-                    if (is_multiplayer)
+                    else
                     {
-                        Packet mp = {PACKET_MOB_UPDATE, local_player_id, .mob = {i, (float)m[i].rect.x, (float)m[i].rect.y, m[i].rect.w, m[i].rect.h, m[i].active, m[i].health, m[i].type}};
-                        send_packet(udp_socket, peer, &mp);
+                        playerLocal.lives--;
+                    }
+                    mobs[i].last_attack_time = now;
+
+                    // Kolla om spelaren dör
+                    if (playerLocal.lives <= 0)
+                    {
+                        int result = showGameOver(renderer);
+                        if (result == 0)
+                        {
+                            skipMenu = true;
+                            return main(argc, argv);
+                        }
+                        else if (result == 1)
+                        {
+                            skipMenu = false;
+                            return main(argc, argv);
+                        }
+                        else
+                        {
+                            running = false;
+                        }
                     }
                 }
             }
-            for (int i = 0; i < MAX_BULLETS; i++)
+        }
+
+        // Uppdatera bullets: förflytta och kolla kollision med mobs
+        for (int i = 0; i < MAX_BULLETS; i++)
+        {
+            if (bullets[i].active)
             {
-                if (b[i].active)
+                bullets[i].rect.x += (int)bullets[i].dx;
+                bullets[i].rect.y += (int)bullets[i].dy;
+                if (bullets[i].rect.x < 0 || bullets[i].rect.x > SCREEN_WIDTH ||
+                    bullets[i].rect.y < 0 || bullets[i].rect.y > SCREEN_HEIGHT)
                 {
-                    for (int j = 0; j < MAX_MOBS; j++)
+                    bullets[i].active = false;
+
+                    network_send_remove_bullet(i);
+                    continue;
+                }
+                for (int j = 0; j < MAX_MOBS; j++)
+                {
+                    if (mobs[j].active && SDL_HasIntersection(&bullets[i].rect, &mobs[j].rect))
                     {
-                        if (m[j].active && SDL_HasIntersection(&b[i].rect, &m[j].rect))
+                        mobs[j].health -= playerLocal.damage;
+                        if (mobs[j].health <= 0)
                         {
-                            m[j].health -= (b[i].owner == local_player_id) ? lp.damage : rp.damage;
-                            if (m[j].health <= 0)
-                            {
-                                m[j].active = false;
-                                if (b[i].owner == local_player_id)
-                                    ls += 100;
-                                else
-                                    rs += 100;
-                                if (rand() % 2 == 0)
+                            mobs[j].active = false;
+                            network_send_remove_mob(j);
+                            network_send_remove_bullet(i);
+                            score += 100;
+                            if (rand() % 4 == 0)
+                            { // 25% chans att en mob släpper en powerup vid död
+                                for (int k = 0; k < MAX_POWERUPS; k++)
                                 {
-                                    for (int k = 0; k < MAX_POWERUPS; k++)
+                                    if (!powerups[k].active && !powerups[k].picked_up)
                                     {
-                                        if (!p[k].active && !p[k].picked_up)
-                                        {
-                                            p[k] = create_powerup(rand() % 4, m[j].rect.x, m[j].rect.y);
-                                            if (is_multiplayer)
-                                            {
-                                                Packet pp = {PACKET_POWERUP_UPDATE, local_player_id, .powerup = {k, p[k].active, p[k].picked_up, p[k].type, (float)p[k].rect.x, (float)p[k].rect.y}};
-                                                send_packet(udp_socket, peer, &pp);
-                                            }
-                                            break;
-                                        }
+                                        PowerupType t = rand() % 4;
+                                        powerups[k] = create_powerup(t, mobs[j].rect.x, mobs[j].rect.y);
+                                        break;
                                     }
                                 }
                             }
-                            b[i].active = false;
-                            if (is_multiplayer)
-                            {
-                                Packet mp = {PACKET_MOB_UPDATE, local_player_id, .mob = {j, (float)m[j].rect.x, (float)m[j].rect.y, m[j].rect.w, m[j].rect.h, m[j].active, m[j].health, m[j].type}};
-                                Packet bp = {PACKET_BULLET, local_player_id, .bullet = {(float)b[i].rect.x, (float)b[i].rect.y, b[i].dx, b[i].dy, b[i].active}};
-                                send_packet(udp_socket, peer, &mp);
-                                send_packet(udp_socket, peer, &bp);
-                            }
-                            break;
                         }
-                    }
-                }
-            }
-            if (now - lmst >= 1500)
-            {
-                for (int i = 0; i < MAX_MOBS; i++)
-                {
-                    if (!m[i].active)
-                    {
-                        int x, y, type = rand() % 4, health = (type == 3) ? 2 : 1;
-                        do
-                        {
-                            x = rand() % (SCREEN_WIDTH - MOB_SIZE);
-                            y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
-                            m[i] = create_mob(x, y, MOB_SIZE, type, health);
-                        } while (check_mob_collision(&m[i].rect, m, i));
-                        if (is_multiplayer)
-                        {
-                            Packet mp = {PACKET_MOB_UPDATE, local_player_id, .mob = {i, (float)m[i].rect.x, (float)m[i].rect.y, m[i].rect.w, m[i].rect.h, m[i].active, m[i].health, m[i].type}};
-                            send_packet(udp_socket, peer, &mp);
-                        }
+                        bullets[i].active = false;
                         break;
-                    }
-                }
-                lmst = now;
-            }
-            if (now - lpst >= 5000)
-            {
-                for (int i = 0; i < MAX_POWERUPS; i++)
-                {
-                    if (!p[i].active || (p[i].picked_up && now - p[i].pickup_time >= p[i].duration))
-                    {
-                        p[i].active = p[i].picked_up = p[i].sound_played = false;
-                        p[i] = create_powerup(rand() % 4, rand() % (SCREEN_WIDTH - 32), rand() % (SCREEN_HEIGHT - 32));
-                        if (is_multiplayer)
-                        {
-                            Packet pp = {PACKET_POWERUP_UPDATE, local_player_id, .powerup = {i, p[i].active, p[i].picked_up, p[i].type, (float)p[i].rect.x, (float)p[i].rect.y}};
-                            send_packet(udp_socket, peer, &pp);
-                        }
-                        break;
-                    }
-                }
-                lpst = now;
-            }
-            if (is_multiplayer)
-            {
-                Packet spl = {PACKET_GAME_STATE, 0, .state = {lp.lives, ls, lp.speed, lp.damage}};
-                Packet spr = {PACKET_GAME_STATE, 1, .state = {rp.lives, rs, rp.speed, rp.damage}};
-                send_packet(udp_socket, peer, &spl);
-                send_packet(udp_socket, peer, &spr);
-            }
-        }
-
-        for (int i = 0; i < MAX_POWERUPS; i++)
-        {
-            if (p[i].active && !p[i].picked_up && SDL_HasIntersection(&p[i].rect, &lp.rect))
-            {
-                if (is_host)
-                {
-                    p[i].picked_up = true;
-                    p[i].pickup_time = now;
-                    apply_powerup_effect(&p[i], &lp, &le, now);
-                    Packet sp = {PACKET_GAME_STATE, local_player_id, .state = {lp.lives, ls, lp.speed, lp.damage}};
-                    send_packet(udp_socket, peer, &sp);
-                }
-                else
-                {
-                    p[i].picked_up = true;
-                    p[i].pickup_time = now;
-                }
-                if (!p[i].sound_played)
-                {
-                    switch (p[i].type)
-                    {
-                    case POWERUP_EXTRA_LIFE:
-                        play_sound(SOUND_EXTRALIFE);
-                        break;
-                    case POWERUP_SPEED_BOOST:
-                        play_sound(SOUND_SPEED);
-                        break;
-                    case POWERUP_FREEZE_ENEMIES:
-                        play_sound(SOUND_FREEZE);
-                        break;
-                    case POWERUP_DOUBLE_DAMAGE:
-                        play_sound(SOUND_DAMAGE);
-                        break;
-                    }
-                    p[i].sound_played = true;
-                }
-                if (is_multiplayer)
-                {
-                    Packet pp = {PACKET_POWERUP_UPDATE, local_player_id, .powerup = {i, p[i].active, p[i].picked_up, p[i].type, (float)p[i].rect.x, (float)p[i].rect.y}};
-                    send_packet(udp_socket, peer, &pp);
-                }
-            }
-        }
-
-        update_effects(&le, &lp.speed, &lp.damage, now, p);
-        if (is_multiplayer)
-            update_effects(&re, &rp.speed, &rp.damage, now, p);
-
-        for (int i = 0; i < MAX_BULLETS; i++)
-        {
-            if (b[i].active)
-            {
-                b[i].rect.x += (int)b[i].dx;
-                b[i].rect.y += (int)b[i].dy;
-                if (b[i].rect.x < 0 || b[i].rect.x > SCREEN_WIDTH || b[i].rect.y < 0 || b[i].rect.y > SCREEN_HEIGHT)
-                {
-                    b[i].active = false;
-                    if (is_multiplayer && is_host)
-                    {
-                        Packet bp = {PACKET_BULLET, local_player_id, .bullet = {(float)b[i].rect.x, (float)b[i].rect.y, b[i].dx, b[i].dy, b[i].active}};
-                        send_packet(udp_socket, peer, &bp);
                     }
                 }
             }
         }
 
-        if (!is_host)
-        {
-            for (int i = 0; i < MAX_BULLETS; i++)
-            {
-                if (b[i].active && b[i].owner == local_player_id)
-                {
-                    for (int j = 0; j < MAX_MOBS; j++)
-                    {
-                        if (m[j].active && SDL_HasIntersection(&b[i].rect, &m[j].rect))
-                        {
-                            b[i].active = false;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (is_multiplayer)
-        {
-            rp.speed = rspeed;
-            rp.damage = rdmg;
-        }
-        if (lp.lives <= 0 || (is_multiplayer && rp.lives <= 0))
-        {
-            int res = showMenuScreen(r, "GAME OVER", (const char *[]){"Play Again", "Main Menu", "Exit Game"}, 3);
-            if (res == 0)
-            {
-                skipMenu = true;
-                return main(argc, argv);
-            }
-            else if (res == 1)
-            {
-                skipMenu = false;
-                return main(argc, argv);
-            }
-            else
-                run = false;
-        }
-
-        SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
-        SDL_RenderClear(r);
-        int ts = 32;
-        SDL_Rect src = {0, 0, ts, ts}, dst;
-        for (int y = 0; y < SCREEN_HEIGHT; y += ts)
-            for (int x = 0; x < SCREEN_WIDTH; x += ts)
-            {
-                dst = (SDL_Rect){x, y, ts, ts};
-                SDL_RenderCopy(r, tex_tiles, &src, &dst);
-            }
-
-        draw_player(r, &lp);
-        if (is_multiplayer)
-            draw_player(r, &rp);
-        draw_powerup_bars(r, &lp, p, now);
-        if (is_multiplayer)
-            draw_powerup_bars(r, &rp, p, now);
+        // Uppdatera mobs så att de rör sig mot spelaren (om de inte är frysta)
+        bool freeze_active = effects.freeze_active;
         for (int i = 0; i < MAX_MOBS; i++)
-            if (m[i].active)
-                draw_mob(r, &m[i], lp.rect);
-        for (int i = 0; i < MAX_BULLETS; i++)
-            if (b[i].active)
-            {
-                SDL_SetRenderDrawColor(r, b[i].owner == local_player_id ? 255 : 0, 0, 255, 255);
-                SDL_RenderFillRect(r, &b[i].rect);
-            }
-        for (int i = 0; i < MAX_POWERUPS; i++)
-            if (p[i].active && !p[i].picked_up)
-                draw_powerup(r, &p[i]);
-
-        SDL_Rect hb_bg = {10, 10, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT};
-        SDL_SetRenderDrawColor(r, 255, 0, 0, 255);
-        SDL_RenderFillRect(r, &hb_bg);
-        SDL_SetRenderDrawColor(r, 0, 255, 0, 255);
-        SDL_Rect hb = {10, 10, (HEALTH_BAR_WIDTH * lp.lives) / MAX_HEALTH, HEALTH_BAR_HEIGHT};
-        SDL_RenderFillRect(r, &hb);
-        if (is_multiplayer)
         {
-            SDL_Rect rhb_bg = {SCREEN_WIDTH - HEALTH_BAR_WIDTH - 10, 10, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT};
-            SDL_SetRenderDrawColor(r, 255, 0, 0, 255);
-            SDL_RenderFillRect(r, &rhb_bg);
-            SDL_SetRenderDrawColor(r, 0, 255, 0, 255);
-            SDL_Rect rhb = {SCREEN_WIDTH - HEALTH_BAR_WIDTH - 10, 10, (HEALTH_BAR_WIDTH * rp.lives) / MAX_HEALTH, HEALTH_BAR_HEIGHT};
-            SDL_RenderFillRect(r, &rhb);
+            if (mobs[i].active)
+            {
+                if (!freeze_active)
+                {
+                    update_mob(&mobs[i], playerLocal.rect);
+                }
+            }
         }
 
-        SDL_RenderPresent(r);
+        // Spawna nya mobs var 1,5 sekund
+        now = SDL_GetTicks();
+        if (mode == MODE_HOST && now - last_mob_spawn_time >= 1500)
+        {
+            for (int i = 0; i < MAX_MOBS; i++)
+            {
+                if (!mobs[i].active)
+                {
+                    int x = rand() % (SCREEN_WIDTH - MOB_SIZE);
+                    int y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
+                    int type = rand() % 4;
+                    int health = (type == 3) ? 2 : 1;
+
+                    // 1) Skapa lokalt
+                    mobs[i] = create_mob(x, y, MOB_SIZE, type, health);
+                    // 2) Synka till klienten med exakta slot-index
+                    network_send_spawn_mob(i, x, y, type, health);
+
+                    break;
+                }
+            }
+            last_mob_spawn_time = now;
+        }
+
+        // Spawna nya powerups var 5 sekund
+        if (mode == MODE_HOST && now - last_powerup_spawn_time >= 5000)
+        {
+            for (int i = 0; i < MAX_POWERUPS; i++)
+            {
+                if (!powerups[i].active)
+                {
+                    int t = rand() % 3;
+                    int x = rand() % (SCREEN_WIDTH - 32);
+                    int y = rand() % (SCREEN_HEIGHT - 32);
+
+                    // 1) Skapa lokalt
+                    powerups[i] = create_powerup(t, x, y);
+
+                    // 2) Synka med klienten – skicka index i först
+                    network_send_spawn_powerup(i, x, y, t);
+
+                    break;
+                }
+            }
+            last_powerup_spawn_time = now;
+        }
+        // Hantera kollisioner och effekter för powerups
+        for (int i = 0; i < MAX_POWERUPS; i++)
+        {
+            check_powerup_collision(&powerups[i], playerLocal.rect, &playerLocal.lives, &playerLocal.speed, &playerLocal.damage, now, &effects);
+            if (powerups[i].picked_up && !powerups[i].sound_played)
+            {
+                // 1) Ta bort powerup‑slot lokalt och synka med peer
+                powerups[i].active = false;
+                network_send_remove_powerup(i);
+
+                // 2) Spela upp rätt ljud
+                switch (powerups[i].type)
+                {
+                case POWERUP_EXTRA_LIFE:
+                    play_sound(SOUND_EXTRALIFE);
+                    break;
+                case POWERUP_SPEED_BOOST:
+                    play_sound(SOUND_SPEED);
+                    break;
+                case POWERUP_FREEZE_ENEMIES:
+                    play_sound(SOUND_FREEZE);
+                    break;
+                case POWERUP_DOUBLE_DAMAGE:
+                    play_sound(SOUND_DAMAGE);
+                    break;
+                default:
+                    break;
+                }
+
+                // 3) Flagga så vi inte spelar ljudet igen
+                powerups[i].sound_played = true;
+            }
+        }
+        update_effects(&effects, &playerLocal.speed, &playerLocal.damage, now, powerups);
+
+        // Renderingsfasen
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        // Rita bakgrund med grön tile
+        int TILE_SIZE = 32;
+        SDL_Rect src = {0, 0, TILE_SIZE, TILE_SIZE}; // Grön tile från spritesheet
+        SDL_Rect dest;
+        for (int y = 0; y < SCREEN_HEIGHT; y += TILE_SIZE)
+        {
+            for (int x = 0; x < SCREEN_WIDTH; x += TILE_SIZE)
+            {
+                dest.x = x;
+                dest.y = y;
+                dest.w = TILE_SIZE;
+                dest.h = TILE_SIZE;
+                SDL_RenderCopy(renderer, tex_tiles, &src, &dest);
+            }
+        }
+
+        // draw_player(renderer, &playerLocal);
+        // draw_player(renderer, &playerRemote);
+
+        SDL_Point center = {PLAYER_SIZE / 2, PLAYER_SIZE / 2};
+
+        SDL_RenderCopyEx(renderer, tex_player, NULL, &playerLocal.rect,
+                         playerLocal.aim_angle, &center, SDL_FLIP_NONE);
+
+        SDL_RenderCopyEx(renderer, tex_player, NULL, &playerRemote.rect,
+                         playerRemote.aim_angle, &center, SDL_FLIP_NONE);
+
+        draw_powerup_bars(renderer, &playerLocal, powerups, now);
+
+        for (int i = 0; i < MAX_MOBS; i++)
+        {
+            if (mobs[i].active)
+            {
+                draw_mob(renderer, &mobs[i], playerLocal.rect);
+            }
+        }
+
+        for (int i = 0; i < MAX_BULLETS; i++)
+        {
+            if (bullets[i].active)
+            {
+                SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+                SDL_RenderFillRect(renderer, &bullets[i].rect);
+            }
+        }
+
+        for (int i = 0; i < MAX_POWERUPS; i++)
+        {
+            draw_powerup(renderer, &powerups[i]);
+        }
+
+        // Rita en enkel livsbar
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+        SDL_Rect healthBarBackground = {SCREEN_WIDTH - HEALTH_BAR_WIDTH - 10, 10, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT};
+        SDL_RenderFillRect(renderer, &healthBarBackground);
+        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+        SDL_Rect healthBar = {SCREEN_WIDTH - HEALTH_BAR_WIDTH - 10, 10, (HEALTH_BAR_WIDTH * playerLocal.lives) / MAX_HEALTH, HEALTH_BAR_HEIGHT};
+        SDL_RenderFillRect(renderer, &healthBar);
+
+        // Skriver ut score och lives på konsolen
+        printf("Score: %d | Lives: %d\n", score, playerLocal.lives);
+        SDL_RenderPresent(renderer);
+
         SDL_Delay(16);
     }
-
-    if (is_multiplayer && udp_socket)
-        SDLNet_UDP_Close(udp_socket);
-    SDLNet_Quit();
-    SDL_DestroyTexture(tex_player);
-    SDL_DestroyTexture(tex_mob);
-    SDL_DestroyTexture(tex_tiles);
+    // Rensa upp resurser
     SDL_DestroyTexture(tex_extralife);
     SDL_DestroyTexture(tex_extraspeed);
     SDL_DestroyTexture(tex_doubledamage);
-    SDL_DestroyTexture(tex_freezeenemies);
+    SDL_DestroyTexture(tex_player);
+    SDL_DestroyTexture(tex_mob);
+    SDL_DestroyTexture(tex_tiles);
     cleanup_sound();
-    SDL_DestroyRenderer(r);
-    SDL_DestroyWindow(w);
-    TTF_Quit();
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    TTF_CloseFont(uiFont);
     IMG_Quit();
     SDL_Quit();
+
     return 0;
+}
+
+NetMode show_multiplayer_menu(SDL_Renderer *renderer, TTF_Font *font)
+{
+    SDL_Rect host_btn = {100, 150, 200, 60};
+    SDL_Rect join_btn = {100, 250, 200, 60};
+    SDL_Event e;
+    while (1)
+    {
+        while (SDL_PollEvent(&e))
+        {
+            if (e.type == SDL_QUIT)
+                exit(0);
+            if (e.type == SDL_MOUSEBUTTONDOWN)
+            {
+                int x = e.button.x, y = e.button.y;
+                if (SDL_PointInRect(&(SDL_Point){x, y}, &host_btn))
+                    return MODE_HOST;
+                if (SDL_PointInRect(&(SDL_Point){x, y}, &join_btn))
+                    return MODE_JOIN;
+            }
+        }
+        SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
+        SDL_RenderClear(renderer);
+
+        // Rita knappar
+        SDL_SetRenderDrawColor(renderer, 80, 80, 200, 255);
+        SDL_RenderFillRect(renderer, &host_btn);
+        SDL_RenderFillRect(renderer, &join_btn);
+
+        // Rita text
+        render_text(renderer, font, "Host Game", host_btn.x + 20, host_btn.y + 20);
+        render_text(renderer, font, "Join Game", join_btn.x + 20, join_btn.y + 20);
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+}
+
+char *prompt_for_ip(SDL_Renderer *renderer, TTF_Font *font)
+{
+    // 1) Starta textinput och släng gamla events
+    SDL_StartTextInput();
+    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+
+    // 2) Alokera buffert
+    char *ip = calloc(256, 1);
+    size_t len = 0;
+    SDL_Event e;
+
+    // 3) Rektangel för inputfältet
+    SDL_Rect inputRect = {100, 150, 300, 32};
+
+    while (1)
+    {
+        // 4) Hämta och hantera alla events
+        while (SDL_PollEvent(&e))
+        {
+            if (e.type == SDL_QUIT)
+                exit(0);
+
+            if (e.type == SDL_TEXTINPUT)
+            {
+                // Lägg på nya tecken
+                if (len + strlen(e.text.text) < 255)
+                {
+                    strcat(ip, e.text.text);
+                    len = strlen(ip);
+                }
+            }
+            else if (e.type == SDL_KEYDOWN)
+            {
+                // Backspace
+                if (e.key.keysym.sym == SDLK_BACKSPACE && len > 0)
+                {
+                    ip[--len] = '\0';
+                }
+                // Vanlig Enter eller Enter på knappsatsen
+                else if (e.key.keysym.sym == SDLK_RETURN ||
+                         e.key.keysym.sym == SDLK_KP_ENTER)
+                {
+                    SDL_StopTextInput();
+                    return ip;
+                }
+            }
+        }
+
+        // 5) Rendera prompt + inputfältet
+        SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
+        SDL_RenderClear(renderer);
+
+        // Skriv prompt‐text
+        render_text(renderer, font, "Enter server IP:", 100, 110);
+
+        // Rita fältets ram
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_RenderDrawRect(renderer, &inputRect);
+
+        // Skriv IP‐strängen inuti
+        render_text(renderer, font, ip, inputRect.x + 5, inputRect.y + 5);
+
+        SDL_RenderPresent(renderer);
+
+        // Liten paus så vi inte skriker CPU
+        SDL_Delay(16);
+    }
+}
+
+void wait_for_client(SDL_Renderer *renderer, TTF_Font *font)
+{
+    SDL_Event e;
+    int x, y;
+    while (1)
+    {
+        // hantera quit
+        while (SDL_PollEvent(&e))
+        {
+            if (e.type == SDL_QUIT)
+                exit(0);
+        }
+        // om paket mottaget -> bryt
+        if (network_receive(&x, &y))
+            break;
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        render_text(renderer, font, "Waiting for client...", 100, 100);
+        SDL_RenderPresent(renderer);
+        SDL_Delay(100);
+    }
 }
