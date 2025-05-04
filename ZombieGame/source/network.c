@@ -8,6 +8,58 @@ UDPsocket netSocket = NULL;
 UDPpacket *pktIn = NULL;
 UDPpacket *pktOut = NULL;
 
+#define RENDEZVOUS_HOST "34.2.48.101"
+#define RENDEZVOUS_PORT 23456
+
+bool network_rendezvous(NetMode mode, const char *roomID)
+{
+    // 1) Lös adress för rendezvous
+    IPaddress rvAddr;
+    if (SDLNet_ResolveHost(&rvAddr, RENDEZVOUS_HOST, RENDEZVOUS_PORT) < 0)
+        return false;
+
+    // 2) Bygg ett kort packet för register/lookup
+    UDPpacket *rvPkt = SDLNet_AllocPacket(PACKET_SIZE);
+    rvPkt->address = rvAddr;
+    if (mode == MODE_HOST)
+        rvPkt->data[0] = MSG_RV_REGISTER;
+    else
+        rvPkt->data[0] = MSG_RV_LOOKUP;
+
+    // Efter första byten i data[0], packa in roomID som C‑string
+    strcpy((char *)rvPkt->data + 1, roomID);
+    rvPkt->len = 1 + (int)strlen(roomID) + 1;
+
+    // 3) Skicka till rendezvous
+    SDLNet_UDP_Send(netSocket, -1, rvPkt);
+
+    if (mode == MODE_JOIN)
+    {
+        // 4) Vänta på peer‑addr från servern
+        //    (servern svarar med MSG_RV_PEERADDR + binär IPaddress)
+        Uint32 start = SDL_GetTicks();
+        while (SDL_GetTicks() - start < 5000)
+        {
+            if (SDLNet_UDP_Recv(netSocket, rvPkt))
+            {
+                if (rvPkt->data[0] == MSG_RV_PEERADDR)
+                {
+                    // Data efter byte 0 är exakt IPaddress
+                    memcpy(&peerAddr, rvPkt->data + 1, sizeof(peerAddr));
+                    SDLNet_FreePacket(rvPkt);
+                    return true;
+                }
+            }
+        }
+        SDLNet_FreePacket(rvPkt);
+        return false;
+    }
+
+    // Host behöver inget svar – rendezvous sparar bara host‑addr
+    SDLNet_FreePacket(rvPkt);
+    return true;
+}
+
 int network_init(NetMode mode, const char *server_ip)
 {
     if (SDLNet_Init() < 0)
@@ -17,6 +69,7 @@ int network_init(NetMode mode, const char *server_ip)
     }
 
     int port = (mode == MODE_HOST) ? NET_PORT : 0;
+
     netSocket = SDLNet_UDP_Open(port);
     if (!netSocket)
     {
@@ -30,6 +83,34 @@ int network_init(NetMode mode, const char *server_ip)
     {
         SDL_Log("SDLNet_AllocPacket failed");
         return -1;
+    }
+
+    {
+        const char *roomID = (mode == MODE_JOIN) ? server_ip : "game123";
+        if (!network_rendezvous(mode, roomID))
+
+        {
+            SDL_Log("Rendezvous misslyckades - fallback på direkt-UDP till %s", server_ip);
+            // Direkt connect mot angiven IP-port
+            IPaddress addr;
+            if (SDLNet_ResolveHost(&addr, server_ip, NET_PORT) < 0)
+            {
+                SDL_Log("Direkt ResolveHost failed: %s", SDLNet_GetError());
+                return -1;
+            }
+            peerAddr = addr;
+            // ingen UDP_Bind här  vi skickar direkt
+        }
+
+        // Hole‑punch: skicka några tomma POS‑paket för att öppna NAT
+        pktOut->len = 1;
+        pktOut->data[0] = MSG_POS;
+        for (int i = 0; i < 5; i++)
+        {
+            pktOut->address = peerAddr;
+            SDLNet_UDP_Send(netSocket, -1, pktOut);
+            SDL_Delay(100);
+        }
     }
 
     if (mode == MODE_JOIN)

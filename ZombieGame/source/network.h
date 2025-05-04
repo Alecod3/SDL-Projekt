@@ -26,7 +26,10 @@ typedef enum
     MSG_REMOVE_MOB = 3,
     MSG_FIRE_BULLET = 4,
     MSG_REMOVE_PWR = 5,
-    MSG_REMOVE_BULLET = 6
+    MSG_REMOVE_BULLET = 6,
+    MSG_RV_REGISTER = 100, // host “registerar” sitt rum
+    MSG_RV_LOOKUP = 101,   // joiner frågar efter host‑addr
+    MSG_RV_PEERADDR = 102  // rendezvous skickar peer‑addr
 } MsgType;
 
 void network_send_spawn_mob(int idx, int x, int y, int type, int health);
@@ -38,5 +41,6 @@ void network_send_remove_bullet(int idx);
 int network_init(NetMode mode, const char *server_ip);
 void network_shutdown(void);
 bool network_receive(int *out_x, int *out_y);
+bool network_rendezvous(NetMode mode, const char *roomID);
 void network_send(int x, int y, float angle);
 #endif

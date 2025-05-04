@@ -30,6 +30,7 @@ sound.o: $(SRCDIR)/sound.c
 network.o: $(SRCDIR)/network.c
 	$(CC) $(CFLAGS) $(SRCDIR)/network.c -o network.o
 
+
 clean:
 	del Game.exe
 	del *.o
