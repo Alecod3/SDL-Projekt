@@ -32,6 +32,7 @@ int main(int argc, char **argv)
         if (SDLNet_UDP_Recv(sock, pkt))
         {
             char *room = (char *)pkt->data + 1;
+
             if (pkt->data[0] == MSG_RV_REGISTER)
             {
                 // spara host
@@ -51,6 +52,17 @@ int main(int argc, char **argv)
                         memcpy(pkt->data + 1, &entries[i].addr, sizeof(IPaddress));
                         pkt->len = 1 + sizeof(IPaddress);
                         SDLNet_UDP_Send(sock, -1, pkt);
+
+                        UDPpacket *reply2 = SDLNet_AllocPacket(PACKET_SIZE);
+                        reply2->data[0] = MSG_RV_PEERADDR;
+                        // pkt->address är joinerns addr
+                        memcpy(reply2->data + 1, &pkt->address, sizeof(IPaddress));
+                        reply2->len = 1 + sizeof(IPaddress);
+                        // skicka till hosten som vi sparat i entries[i].addr
+                        reply2->address = entries[i].addr;
+                        SDLNet_UDP_Send(sock, -1, reply2);
+                        SDLNet_FreePacket(reply2);
+
                         break;
                     }
                 }

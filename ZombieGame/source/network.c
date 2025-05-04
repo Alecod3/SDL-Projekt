@@ -35,8 +35,6 @@ bool network_rendezvous(NetMode mode, const char *roomID)
 
     if (mode == MODE_JOIN)
     {
-        // 4) Vänta på peer‑addr från servern
-        //    (servern svarar med MSG_RV_PEERADDR + binär IPaddress)
         Uint32 start = SDL_GetTicks();
         while (SDL_GetTicks() - start < 5000)
         {
@@ -44,14 +42,16 @@ bool network_rendezvous(NetMode mode, const char *roomID)
             {
                 if (rvPkt->data[0] == MSG_RV_PEERADDR)
                 {
-                    // Data efter byte 0 är exakt IPaddress
                     memcpy(&peerAddr, rvPkt->data + 1, sizeof(peerAddr));
                     SDLNet_FreePacket(rvPkt);
+                    SDL_Log("Rendezvous: got peerAddr %x:%d",
+                            SDLNet_Read32(&peerAddr.host), peerAddr.port);
                     return true;
                 }
             }
         }
         SDLNet_FreePacket(rvPkt);
+        SDL_Log("Rendezvous timeout waiting for peerAddr");
         return false;
     }
 
