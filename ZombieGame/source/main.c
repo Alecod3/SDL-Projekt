@@ -687,6 +687,28 @@ int main(int argc, char *argv[])
                 if (idx >= 0 && idx < MAX_MOBS)
                     mobs[idx].active = false;
             }
+            else if (msg == MSG_FREEZE)
+            {
+                // När kompisen fryser, frys också här:
+                effects.freeze_active = true;
+                effects.freeze_start_time = SDL_GetTicks();
+            }
+            else if (msg == MSG_DAMAGE)
+            {
+                int amount;
+                memcpy(&amount, pktIn->data + 1, sizeof(int));
+                // den andra spelaren tar damage
+                playerRemote.lives -= amount;
+            }
+            else if (msg == MSG_SET_HP)
+            {
+                int hp;
+                memcpy(&hp, pktIn->data + 1, sizeof(int));
+                // sharea HP – sätt båda till samma värde
+                playerLocal.lives = hp;
+                playerRemote.lives = hp;
+            }
+
             else if (msg == MSG_REMOVE_BULLET)
             {
                 int idx;
@@ -749,45 +771,31 @@ int main(int argc, char *argv[])
         }
 
         // Kollision och attack‑hantering mellan spelare och mobs
-        for (int i = 0; i < MAX_MOBS; i++)
+        if (mode == MODE_HOST)
         {
-            if (!mobs[i].active)
-                continue;
-
-            if (mobs[i].attacking)
+            // bara host kör collision+damage
+            for (int i = 0; i < MAX_MOBS; i++)
             {
-                Uint32 now = SDL_GetTicks();
-                // Slå bara om attack_interval passerat
-                if (now - mobs[i].last_attack_time >= mobs[i].attack_interval)
-                {
-                    if (mobs[i].type == 3)
-                    {
-                        playerLocal.lives -= 2;
-                    }
-                    else
-                    {
-                        playerLocal.lives--;
-                    }
-                    mobs[i].last_attack_time = now;
+                if (!mobs[i].active)
+                    continue;
 
-                    // Kolla om spelaren dör
-                    if (playerLocal.lives <= 0)
+                if (mobs[i].attacking)
+                {
+                    Uint32 now = SDL_GetTicks();
+                    if (now - mobs[i].last_attack_time >= mobs[i].attack_interval)
                     {
-                        int result = showGameOver(renderer);
-                        if (result == 0)
-                        {
-                            skipMenu = true;
-                            return main(argc, argv);
-                        }
-                        else if (result == 1)
-                        {
-                            skipMenu = false;
-                            return main(argc, argv);
-                        }
+                        // applicera damage *EN GÅNG* på hosten
+                        if (mobs[i].type == 3)
+                            playerLocal.lives -= 2;
                         else
-                        {
-                            running = false;
-                        }
+                            playerLocal.lives--;
+
+                        // skicka det nya delade HP‑värdet till joinern
+                        network_send_set_hp(playerLocal.lives);
+
+                        mobs[i].last_attack_time = now;
+
+                        // dödshantering …
                     }
                 }
             }
@@ -843,13 +851,25 @@ int main(int argc, char *argv[])
         bool freeze_active = effects.freeze_active;
         for (int i = 0; i < MAX_MOBS; i++)
         {
-            if (mobs[i].active)
-            {
-                if (!freeze_active)
-                {
-                    update_mob(&mobs[i], playerLocal.rect);
-                }
-            }
+            // Hoppa över inaktiva mobbar eller om effekten “freeze” råder
+            if (!mobs[i].active || freeze_active)
+                continue;
+
+            // Beräkna avstånd till Local
+            float dxL = (playerLocal.rect.x + playerLocal.rect.w / 2.0f) - (mobs[i].rect.x + mobs[i].rect.w / 2.0f);
+            float dyL = (playerLocal.rect.y + playerLocal.rect.h / 2.0f) - (mobs[i].rect.y + mobs[i].rect.h / 2.0f);
+            float distL = sqrtf(dxL * dxL + dyL * dyL);
+
+            // Beräkna avstånd till Remote
+            float dxR = (playerRemote.rect.x + playerRemote.rect.w / 2.0f) - (mobs[i].rect.x + mobs[i].rect.w / 2.0f);
+            float dyR = (playerRemote.rect.y + playerRemote.rect.h / 2.0f) - (mobs[i].rect.y + mobs[i].rect.h / 2.0f);
+            float distR = sqrtf(dxR * dxR + dyR * dyR);
+
+            // Välj den närmaste spelaren som mål
+            SDL_Rect target = (distL < distR) ? playerLocal.rect : playerRemote.rect;
+
+            // Uppdatera mobben mot target
+            update_mob(&mobs[i], target);
         }
 
         // Spawna nya mobs var 1,5 sekund
@@ -907,6 +927,8 @@ int main(int argc, char *argv[])
                 // 1) Ta bort powerup‑slot lokalt och synka med peer
                 powerups[i].active = false;
                 network_send_remove_powerup(i);
+                if (powerups[i].type == POWERUP_FREEZE_ENEMIES)
+                    network_send_freeze();
 
                 // 2) Spela upp rätt ljud
                 switch (powerups[i].type)
@@ -988,13 +1010,21 @@ int main(int argc, char *argv[])
             draw_powerup(renderer, &powerups[i]);
         }
 
-        // Rita en enkel livsbar
+        int barX = 10;
+        int barY = 10;
+        int barW = HEALTH_BAR_WIDTH;
+        int barH = HEALTH_BAR_HEIGHT;
+
+        // 1) Rita röd bakgrund (full bredd)
+        SDL_Rect bg = {barX, barY, barW, barH};
         SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        SDL_Rect healthBarBackground = {SCREEN_WIDTH - HEALTH_BAR_WIDTH - 10, 10, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT};
-        SDL_RenderFillRect(renderer, &healthBarBackground);
+        SDL_RenderFillRect(renderer, &bg);
+
+        // 2) Rita grön förgrund (proportionellt mot liv kvar)
+        float frac = (float)playerLocal.lives / (float)MAX_HEALTH;
+        SDL_Rect fg = {barX, barY, (int)(barW * frac), barH};
         SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-        SDL_Rect healthBar = {SCREEN_WIDTH - HEALTH_BAR_WIDTH - 10, 10, (HEALTH_BAR_WIDTH * playerLocal.lives) / MAX_HEALTH, HEALTH_BAR_HEIGHT};
-        SDL_RenderFillRect(renderer, &healthBar);
+        SDL_RenderFillRect(renderer, &fg);
 
         // Skriver ut score och lives på konsolen
         printf("Score: %d | Lives: %d\n", score, playerLocal.lives);

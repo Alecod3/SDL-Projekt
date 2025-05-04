@@ -8,14 +8,16 @@
 #include <SDL2/SDL.h>
 #include <stdbool.h>
 
-typedef enum {
+typedef enum
+{
     POWERUP_EXTRA_LIFE,
     POWERUP_SPEED_BOOST,
     POWERUP_DOUBLE_DAMAGE,
     POWERUP_FREEZE_ENEMIES
 } PowerupType;
 
-typedef struct {
+typedef struct
+{
     bool speed_active;
     Uint32 speed_start_time;
     bool damage_active;
@@ -24,7 +26,8 @@ typedef struct {
     Uint32 freeze_start_time;
 } ActiveEffects;
 
-typedef struct {
+typedef struct
+{
     PowerupType type;
     SDL_Rect rect;
     bool active;
@@ -36,14 +39,14 @@ typedef struct {
 
 // Funktioner
 Powerup create_powerup(PowerupType type, int x, int y);
-void check_powerup_collision(Powerup* p, SDL_Rect player, int* lives, int* player_speed, int* player_damage, Uint32 current_time, ActiveEffects* effects);
-void update_powerup_effect(Powerup* powerups, int index, int* player_speed, int* player_damage, Uint32 current_time);
-void draw_powerup(SDL_Renderer* renderer, Powerup* p);
-void update_effects(ActiveEffects* effects, int* player_speed, int* player_damage, Uint32 current_time, Powerup powerups[]);
+void check_powerup_collision(Powerup *p, SDL_Rect player, int *lives, int *player_speed, int *player_damage, Uint32 current_time, ActiveEffects *effects);
+void update_powerup_effect(Powerup *powerups, int index, int *player_speed, int *player_damage, Uint32 current_time);
+void draw_powerup(SDL_Renderer *renderer, Powerup *p);
+void update_effects(ActiveEffects *effects, int *player_speed, int *player_damage, Uint32 current_time, Powerup powerups[]);
 
-extern SDL_Texture* tex_extralife;
-extern SDL_Texture* tex_extraspeed;
-extern SDL_Texture* tex_doubledamage;
-extern SDL_Texture* tex_freezeenemies;
+extern SDL_Texture *tex_extralife;
+extern SDL_Texture *tex_extraspeed;
+extern SDL_Texture *tex_doubledamage;
+extern SDL_Texture *tex_freezeenemies;
 
 #endif

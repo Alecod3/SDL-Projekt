@@ -177,3 +177,31 @@ void network_send_remove_bullet(int idx)
     pktOut->address = peerAddr;
     SDLNet_UDP_Send(netSocket, -1, pktOut);
 }
+void network_send_freeze(void)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_FREEZE;
+    pktOut->len = 1;
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+
+void network_send_damage(int amount)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_DAMAGE;
+    memcpy(d + 1, &amount, sizeof(int));
+    pktOut->len = 1 + sizeof(int);
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+void network_send_set_hp(int hp)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_SET_HP;
+    int off = 1;
+    memcpy(d + off, &hp, sizeof(int));
+    pktOut->len = off + sizeof(int);
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
