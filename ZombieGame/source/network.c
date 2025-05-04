@@ -177,19 +177,3 @@ void network_send_remove_bullet(int idx)
     pktOut->address = peerAddr;
     SDLNet_UDP_Send(netSocket, -1, pktOut);
 }
-
-void network_send_mob_pos(int idx, int x, int y)
-{
-    Uint8 *d = pktOut->data;
-    d[0] = MSG_MOB_POS;
-    int off = 1;
-    memcpy(d + off, &idx, sizeof(int));
-    off += sizeof(int);
-    memcpy(d + off, &x, sizeof(int));
-    off += sizeof(int);
-    memcpy(d + off, &y, sizeof(int));
-    off += sizeof(int);
-    pktOut->len = off;
-    pktOut->address = peerAddr;
-    SDLNet_UDP_Send(netSocket, -1, pktOut);
-}

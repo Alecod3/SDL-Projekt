@@ -680,21 +680,6 @@ int main(int argc, char *argv[])
                     powerups[idx].active = false;
             }
 
-            else if (msg == MSG_MOB_POS)
-            {
-                int idx, mx, my;
-                memcpy(&idx, pktIn->data + off, sizeof(int));
-                off += sizeof(int);
-                memcpy(&mx, pktIn->data + off, sizeof(int));
-                off += sizeof(int);
-                memcpy(&my, pktIn->data + off, sizeof(int)); // off += sizeof(int);
-
-                if (idx >= 0 && idx < MAX_MOBS)
-                {
-                    mobs[idx].rect.x = mx;
-                    mobs[idx].rect.y = my;
-                }
-            }
             else if (msg == MSG_REMOVE_MOB)
             {
                 int idx;
@@ -856,26 +841,15 @@ int main(int argc, char *argv[])
 
         // Uppdatera mobs så att de rör sig mot spelaren (om de inte är frysta)
         bool freeze_active = effects.freeze_active;
-
         for (int i = 0; i < MAX_MOBS; i++)
         {
-            if (!mobs[i].active || freeze_active)
-                continue;
-
-            // beräkna kvadrerad distans
-            float dxL = (playerLocal.rect.x - mobs[i].rect.x);
-            float dyL = (playerLocal.rect.y - mobs[i].rect.y);
-            float distL = dxL * dxL + dyL * dyL;
-
-            float dxR = (playerRemote.rect.x - mobs[i].rect.x);
-            float dyR = (playerRemote.rect.y - mobs[i].rect.y);
-            float distR = dxR * dxR + dyR * dyR;
-
-            SDL_Rect target = (distR < distL)
-                                  ? playerRemote.rect
-                                  : playerLocal.rect;
-
-            update_mob(&mobs[i], target);
+            if (mobs[i].active)
+            {
+                if (!freeze_active)
+                {
+                    update_mob(&mobs[i], playerLocal.rect);
+                }
+            }
         }
 
         // Spawna nya mobs var 1,5 sekund
