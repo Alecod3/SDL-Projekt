@@ -26,10 +26,12 @@ typedef enum
     MSG_REMOVE_MOB = 3,
     MSG_FIRE_BULLET = 4,
     MSG_REMOVE_PWR = 5,
-    MSG_REMOVE_BULLET = 6
+    MSG_REMOVE_BULLET = 6,
+    MSG_MOB_POS = 7
 } MsgType;
 
 void network_send_spawn_mob(int idx, int x, int y, int type, int health);
+void network_send_mob_pos(int idx, int x, int y);
 void network_send_spawn_powerup(int idx, int x, int y, int powerupType);
 void network_send_remove_mob(int index);
 void network_send_fire_bullet(int idx, int x, int y, float dx, float dy);
