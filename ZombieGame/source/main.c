@@ -422,9 +422,14 @@ int main(int argc, char *argv[])
         network_send(player_get_x(playerLocal), player_get_y(playerLocal), player_get_aim_angle(playerLocal));
     }
 
-    init_sound();
+    SoundSystem *audio = SoundSystem_create();
+    if (!audio)
+    {
+        fprintf(stderr, "Kunde inte initiera ljud\n");
+        return 1;
+    }
 
-    play_music("source/spelmusik.wav");
+    SoundSystem_playMusic(audio, "source/spelmusik.wav");
 
     if (!skipMenu)
     {
@@ -591,7 +596,7 @@ int main(int argc, char *argv[])
                             bullets[i].rect.x, bullets[i].rect.y,
                             bullets[i].dx, bullets[i].dy);
 
-                        play_sound(SOUND_SHOOT);
+                        SoundSystem_playEffect(audio, SOUND_SHOOT);
                         break;
                     }
                 }
@@ -822,7 +827,7 @@ int main(int argc, char *argv[])
                             bullets[i].rect.x, bullets[i].rect.y,
                             bullets[i].dx, bullets[i].dy);
 
-                        play_sound(SOUND_SHOOT);
+                        SoundSystem_playEffect(audio, SOUND_SHOOT);
                         break;
                     }
                 }
@@ -1012,16 +1017,16 @@ int main(int argc, char *argv[])
                 switch (powerups[i].type)
                 {
                 case POWERUP_EXTRA_LIFE:
-                    play_sound(SOUND_EXTRALIFE);
+                    SoundSystem_playEffect(audio, SOUND_EXTRALIFE);
                     break;
                 case POWERUP_SPEED_BOOST:
-                    play_sound(SOUND_SPEED);
+                    SoundSystem_playEffect(audio, SOUND_SPEED);
                     break;
                 case POWERUP_FREEZE_ENEMIES:
-                    play_sound(SOUND_FREEZE);
+                    SoundSystem_playEffect(audio, SOUND_FREEZE);
                     break;
                 case POWERUP_DOUBLE_DAMAGE:
-                    play_sound(SOUND_DAMAGE);
+                    SoundSystem_playEffect(audio, SOUND_DAMAGE);
                     break;
                 default:
                     break;
@@ -1118,7 +1123,7 @@ int main(int argc, char *argv[])
     SDL_DestroyTexture(tex_player);
     SDL_DestroyTexture(tex_mob);
     SDL_DestroyTexture(tex_tiles);
-    cleanup_sound();
+    SoundSystem_destroy(audio);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     TTF_CloseFont(uiFont);

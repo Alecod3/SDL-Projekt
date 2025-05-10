@@ -1,49 +1,109 @@
+// sound.c
 #include "sound.h"
+#include <stdlib.h>
 #include <stdio.h>
 
-Mix_Music *bgMusic = NULL;
-Mix_Chunk *soundEffects[SOUND_COUNT] = {NULL};
+struct SoundSystem
+{
+    Mix_Music *bgMusic;
+    Mix_Chunk *effects[SOUND_COUNT];
+};
 
-void init_sound(){
-    if(Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-        printf("SDL_mixer init error: %s\n", Mix_GetError());
+SoundSystem *SoundSystem_create()
+{
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
+    {
+        fprintf(stderr, "SDL_mixer init error: %s\n", Mix_GetError());
+        return NULL;
     }
-    soundEffects[SOUND_SHOOT]     = Mix_LoadWAV("source/shoot.wav");
-    soundEffects[SOUND_EXTRALIFE] = Mix_LoadWAV("source/life2.wav");
-    soundEffects[SOUND_SPEED]     = Mix_LoadWAV("source/speed.wav");
-    Mix_VolumeChunk(soundEffects[SOUND_SPEED], 128);
-    soundEffects[SOUND_FREEZE]    = Mix_LoadWAV("source/freeze.wav");
-    Mix_VolumeChunk(soundEffects[SOUND_FREEZE], 128);
-    soundEffects[SOUND_DAMAGE]    = Mix_LoadWAV("source/ddamage.wav");
-    Mix_VolumeChunk(soundEffects[SOUND_DAMAGE], 128);
-}
+    SoundSystem *sys = malloc(sizeof(*sys));
+    if (!sys)
+        return NULL;
 
-void play_music(const char *filename){
-    bgMusic = Mix_LoadMUS(filename);
-    if(!bgMusic){
-        printf("Misslyckades med att ladda musik: %s\n", Mix_GetError());
-    }else{
-        Mix_VolumeMusic(18); 
-        Mix_PlayMusic(bgMusic, -1);
-    }
-}
+    sys->bgMusic = NULL;
 
-void play_sound(SoundEffect effect){
-    if(effect >= 0 && effect < SOUND_COUNT && soundEffects[effect]){
-        Mix_PlayChannel(-1, soundEffects[effect], 0);
-    }
-}
+    // Load effects
+    sys->effects[SOUND_SHOOT] = Mix_LoadWAV("source/shoot.wav");
+    sys->effects[SOUND_EXTRALIFE] = Mix_LoadWAV("source/life2.wav");
+    sys->effects[SOUND_SPEED] = Mix_LoadWAV("source/speed.wav");
+    if (sys->effects[SOUND_SPEED])
+        Mix_VolumeChunk(sys->effects[SOUND_SPEED], 128);
+    sys->effects[SOUND_FREEZE] = Mix_LoadWAV("source/freeze.wav");
+    if (sys->effects[SOUND_FREEZE])
+        Mix_VolumeChunk(sys->effects[SOUND_FREEZE], 128);
+    sys->effects[SOUND_DAMAGE] = Mix_LoadWAV("source/ddamage.wav");
+    if (sys->effects[SOUND_DAMAGE])
+        Mix_VolumeChunk(sys->effects[SOUND_DAMAGE], 128);
 
-void cleanup_sound(){
-    for(int i = 0; i < SOUND_COUNT; i++){
-        if(soundEffects[i]){
-            Mix_FreeChunk(soundEffects[i]);
-            soundEffects[i] = NULL;
+    // Check for load errors
+    for (int i = 0; i < SOUND_COUNT; i++)
+    {
+        if (!sys->effects[i])
+        {
+            fprintf(stderr, "Failed loading effect %d: %s\n", i, Mix_GetError());
         }
     }
-    if(bgMusic){
-        Mix_FreeMusic(bgMusic);
-        bgMusic = NULL;
+
+    return sys;
+}
+
+void SoundSystem_playMusic(SoundSystem *sys, const char *filename)
+{
+    if (!sys)
+        return;
+
+    // Free previous music
+    if (sys->bgMusic)
+    {
+        Mix_FreeMusic(sys->bgMusic);
+        sys->bgMusic = NULL;
+    }
+
+    sys->bgMusic = Mix_LoadMUS(filename);
+    if (!sys->bgMusic)
+    {
+        fprintf(stderr, "Failed to load music '%s': %s\n", filename, Mix_GetError());
+        return;
+    }
+
+    Mix_VolumeMusic(18);
+    if (Mix_PlayMusic(sys->bgMusic, -1) < 0)
+    {
+        fprintf(stderr, "Failed to play music: %s\n", Mix_GetError());
+    }
+}
+
+void SoundSystem_playEffect(SoundSystem *sys, SoundEffect effect)
+{
+    if (!sys)
+        return;
+    if (effect < 0 || effect >= SOUND_COUNT)
+        return;
+    Mix_Chunk *chunk = sys->effects[effect];
+    if (chunk)
+    {
+        if (Mix_PlayChannel(-1, chunk, 0) < 0)
+        {
+            fprintf(stderr, "Failed to play effect %d: %s\n", effect, Mix_GetError());
+        }
+    }
+}
+
+void SoundSystem_destroy(SoundSystem *sys)
+{
+    if (!sys)
+        return;
+    for (int i = 0; i < SOUND_COUNT; i++)
+    {
+        if (sys->effects[i])
+        {
+            Mix_FreeChunk(sys->effects[i]);
+        }
+    }
+    if (sys->bgMusic)
+    {
+        Mix_FreeMusic(sys->bgMusic);
     }
     Mix_CloseAudio();
+    free(sys);
 }
