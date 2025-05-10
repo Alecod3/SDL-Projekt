@@ -6,20 +6,104 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-Player create_player(int x, int y, int size, int speed, int damage, int lives)
+struct Player
 {
-    Player p;
-    p.rect.x = x;
-    p.rect.y = y;
-    p.rect.w = size;
-    p.rect.h = size;
-    p.speed = speed;
-    p.damage = damage;
-    p.lives = lives;
-    p.aim_angle = 0.0f;
-    p.tint = (SDL_Color){255, 255, 255, 255};
+    SDL_Rect rect;
+    int speed;
+    int damage;
+    int lives;
+    float aim_angle;
+    SDL_Color tint;
+};
 
+Player *create_player(int x, int y, int size, int speed, int damage, int lives)
+{
+    Player *p = malloc(sizeof(Player));
+    p->rect.x = x;
+    p->rect.y = y;
+    p->rect.w = size;
+    p->rect.h = size;
+    p->speed = speed;
+    p->damage = damage;
+    p->lives = lives;
+    p->aim_angle = 0.0f;
+    p->tint = (SDL_Color){255, 255, 255, 255};
     return p;
+}
+
+SDL_Rect player_get_rect(const Player *p)
+{
+    return p->rect;
+}
+
+int player_get_lives(const Player *p)
+{
+    return p->lives;
+}
+
+void player_set_lives(Player *p, int lives)
+{
+    p->lives = lives;
+}
+
+void player_set_tint(Player *p, SDL_Color tint)
+{
+    p->tint = tint;
+}
+
+int player_get_x(const Player *p)
+{
+    return p->rect.x;
+}
+
+int player_get_y(const Player *p)
+{
+    return p->rect.y;
+}
+void player_set_aim_angle(Player *p, float angle)
+{
+    p->aim_angle = angle;
+}
+
+float player_get_aim_angle(const Player *p)
+{
+    return p->aim_angle;
+}
+
+int player_get_center_x(const Player *p)
+{
+    return p->rect.x + p->rect.w / 2;
+}
+
+int player_get_center_y(const Player *p)
+{
+    return p->rect.y + p->rect.h / 2;
+}
+
+void player_set_position(Player *p, int x, int y)
+{
+    p->rect.x = x;
+    p->rect.y = y;
+}
+
+int player_get_speed(const Player *p)
+{
+    return p->speed;
+}
+
+void player_set_speed(Player *p, int speed)
+{
+    p->speed = speed;
+}
+
+int player_get_damage(const Player *p)
+{
+    return p->damage;
+}
+
+void player_set_damage(Player *p, int damage)
+{
+    p->damage = damage;
 }
 
 void update_player(Player *p, const Uint8 *state)

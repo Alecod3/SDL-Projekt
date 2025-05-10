@@ -1,5 +1,6 @@
 #include "powerups.h"
 #include "network.h"
+#include "player.h"
 #include <SDL2/SDL.h>
 
 // Externa texturer definieras här, de bör laddas (ex. med SDL_Image) någon annanstans i projektet.
@@ -40,13 +41,14 @@ Powerup create_powerup(PowerupType type, int x, int y)
     return p;
 }
 
-void check_powerup_collision(Powerup *p, SDL_Rect player, int *lives, int *player_speed, int *player_damage, Uint32 current_time, ActiveEffects *effects)
+void check_powerup_collision(Powerup *p, Player *player, Uint32 current_time, ActiveEffects *effects)
 {
     if (!p->active)
         return;
 
+    SDL_Rect player_rect = player_get_rect(player);
     SDL_Rect r = {p->rect.x, p->rect.y, p->rect.w, p->rect.h};
-    if (SDL_HasIntersection(&r, &player))
+    if (SDL_HasIntersection(&r, &player_rect))
     {
         p->active = false;
         p->picked_up = true;
@@ -56,19 +58,20 @@ void check_powerup_collision(Powerup *p, SDL_Rect player, int *lives, int *playe
         {
         case POWERUP_EXTRA_LIFE:
             // Öka liv men inte över MAX_HEALTH
-            if (*lives < MAX_HEALTH)
+            int lives = player_get_lives(player);
+            if (lives < MAX_HEALTH)
             {
-                *lives += 1;
-                network_send_set_hp(*lives); // Synka det nya HP-värdet
+                player_set_lives(player, lives + 1);
+                network_send_set_hp(lives + 1);
             }
             break;
         case POWERUP_SPEED_BOOST:
-            *player_speed = DEFAULT_PLAYER_SPEED * 2;
+            player_set_speed(player, DEFAULT_PLAYER_SPEED * 2);
             effects->speed_active = true;
             effects->speed_start_time = current_time;
             break;
         case POWERUP_DOUBLE_DAMAGE:
-            *player_damage = DEFAULT_PLAYER_DAMAGE * 2;
+            player_set_damage(player, DEFAULT_PLAYER_DAMAGE * 2);
             effects->damage_active = true;
             effects->damage_start_time = current_time;
             break;
@@ -80,17 +83,17 @@ void check_powerup_collision(Powerup *p, SDL_Rect player, int *lives, int *playe
     }
 }
 
-void update_effects(ActiveEffects *effects, int *player_speed, int *player_damage, Uint32 current_time, Powerup powerups[])
+void update_effects(ActiveEffects *effects, Player *player, Uint32 current_time, Powerup powerups[])
 {
     if (effects->speed_active && current_time - effects->speed_start_time >= 3000)
     {
-        *player_speed = DEFAULT_PLAYER_SPEED;
+        player_set_speed(player, DEFAULT_PLAYER_SPEED);
         effects->speed_active = false;
     }
 
     if (effects->damage_active && current_time - effects->damage_start_time >= 3000)
     {
-        *player_damage = DEFAULT_PLAYER_DAMAGE;
+        player_set_damage(player, DEFAULT_PLAYER_DAMAGE);
         effects->damage_active = false;
     }
 

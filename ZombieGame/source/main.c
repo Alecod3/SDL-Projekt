@@ -408,18 +408,18 @@ int main(int argc, char *argv[])
 
     skipMenu = true;
 
-    Player playerLocal = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2,
-                                       PLAYER_SIZE, DEFAULT_PLAYER_SPEED,
-                                       DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
-    Player playerRemote = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2,
+    Player *playerLocal = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2,
                                         PLAYER_SIZE, DEFAULT_PLAYER_SPEED,
                                         DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
-    playerRemote.tint = (SDL_Color){200, 80, 80, 255};
+    Player *playerRemote = create_player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2,
+                                         PLAYER_SIZE, DEFAULT_PLAYER_SPEED,
+                                         DEFAULT_PLAYER_DAMAGE, MAX_HEALTH);
+    player_set_tint(playerRemote, (SDL_Color){200, 80, 80, 255}); // ✅ korrekt ADT-stil
 
     if (mode == MODE_JOIN)
     {
         // Skicka ett första paket för att hostens wait_for_client() ska snappa upp dig
-        network_send(playerLocal.rect.x, playerLocal.rect.y, playerLocal.aim_angle);
+        network_send(player_get_x(playerLocal), player_get_y(playerLocal), player_get_aim_angle(playerLocal));
     }
 
     init_sound();
@@ -559,12 +559,18 @@ int main(int argc, char *argv[])
                 int mx, my;
                 SDL_GetMouseState(&mx, &my);
                 // Skjut en bullet med spelarens damage
+
                 for (int i = 0; i < MAX_BULLETS; i++)
                 {
+
                     if (!bullets[i].active)
                     {
-                        bullets[i].rect.x = playerLocal.rect.x + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
-                        bullets[i].rect.y = playerLocal.rect.y + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
+
+                        int center_x = player_get_center_x(playerLocal);
+                        int center_y = player_get_center_y(playerLocal);
+
+                        bullets[i].rect.x = center_x - BULLET_SIZE / 2;
+                        bullets[i].rect.y = center_y - BULLET_SIZE / 2;
 
                         bullets[i].rect.w = BULLET_SIZE;
                         bullets[i].rect.h = BULLET_SIZE;
@@ -572,8 +578,8 @@ int main(int argc, char *argv[])
 
                         // 1) Räkna ut rörelseriktning först
                         {
-                            float dx = (float)mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
-                            float dy = (float)my - (playerLocal.rect.y + PLAYER_SIZE / 2);
+                            float dx = (float)mx - center_x;
+                            float dy = (float)my - center_y;
                             float length = sqrtf(dx * dx + dy * dy);
                             bullets[i].dx = BULLET_SPEED * (dx / length);
                             bullets[i].dy = BULLET_SPEED * (dy / length);
@@ -609,9 +615,8 @@ int main(int argc, char *argv[])
                 off += sizeof(int);
                 memcpy(&rang, pktIn->data + off, sizeof(float));
                 off += sizeof(float);
-                playerRemote.rect.x = rx;
-                playerRemote.rect.y = ry;
-                playerRemote.aim_angle = rang;
+                player_set_position(playerRemote, rx, ry);
+                player_set_aim_angle(playerRemote, rang);
             }
             else if (msg == MSG_SPAWN_MOB)
             {
@@ -689,11 +694,14 @@ int main(int argc, char *argv[])
                 int amount;
                 memcpy(&amount, pktIn->data + 1, sizeof(int));
                 // Båda spelarna tar damage
-                playerLocal.lives -= amount;
-                playerRemote.lives -= amount;
-                network_send_set_hp(playerLocal.lives); // Synka det nya HP-värdet
+                player_set_lives(playerLocal, player_get_lives(playerLocal) - amount);
+                player_set_lives(playerRemote, player_get_lives(playerRemote) - amount);
+
+                // Synka det nya HP-värdet
+                network_send_set_hp(player_get_lives(playerLocal));
+
                 // Kontrollera om spelet är över
-                if (playerLocal.lives <= 0)
+                if (player_get_lives(playerLocal) <= 0)
                 {
                     network_send_game_over();
                     int result = showGameOver(renderer);
@@ -718,10 +726,10 @@ int main(int argc, char *argv[])
                 int hp;
                 memcpy(&hp, pktIn->data + 1, sizeof(int));
                 // Sätt båda spelarnas HP till samma värde
-                playerLocal.lives = hp;
-                playerRemote.lives = hp;
+                player_set_lives(playerLocal, hp);
+                player_set_lives(playerRemote, hp);
                 // Kontrollera om spelet är över
-                if (playerLocal.lives <= 0)
+                if (player_get_lives(playerLocal) <= 0)
                 {
                     network_send_game_over();
                     int result = showGameOver(renderer);
@@ -767,14 +775,17 @@ int main(int argc, char *argv[])
                     bullets[idx].active = false;
             }
         }
-        update_player(&playerLocal, state);
+        update_player(playerLocal, state);
 
         int mx, my;
         SDL_GetMouseState(&mx, &my);
-        float dx = mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
-        float dy = my - (playerLocal.rect.y + PLAYER_SIZE / 2);
-        playerLocal.aim_angle = atan2f(dy, dx) * 180.0f / (float)M_PI;
-        network_send(playerLocal.rect.x, playerLocal.rect.y, playerLocal.aim_angle);
+        int cx = player_get_center_x(playerLocal);
+        int cy = player_get_center_y(playerLocal);
+        float dx = mx - cx;
+        float dy = my - cy;
+        float angle = atan2f(dy, dx) * 180.0f / (float)M_PI;
+        player_set_aim_angle(playerLocal, angle);
+        network_send(player_get_x(playerLocal), player_get_y(playerLocal), angle);
 
         if (state[SDL_SCANCODE_SPACE])
         {
@@ -786,16 +797,20 @@ int main(int argc, char *argv[])
                 {
                     if (!bullets[i].active)
                     {
-                        bullets[i].rect.x = playerLocal.rect.x + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
-                        bullets[i].rect.y = playerLocal.rect.y + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
+                        int px = player_get_center_x(playerLocal);
+                        int py = player_get_center_y(playerLocal);
+                        bullets[i].rect.x = px - BULLET_SIZE / 2;
+                        bullets[i].rect.y = py - BULLET_SIZE / 2;
                         bullets[i].rect.w = BULLET_SIZE;
                         bullets[i].rect.h = BULLET_SIZE;
                         bullets[i].active = true;
 
                         // 1) Beräkna dx/dy
                         {
-                            float dx = (float)mx - (playerLocal.rect.x + PLAYER_SIZE / 2);
-                            float dy = (float)my - (playerLocal.rect.y + PLAYER_SIZE / 2);
+                            int center_x = player_get_center_x(playerLocal);
+                            int center_y = player_get_center_y(playerLocal);
+                            float dx = (float)mx - center_x;
+                            float dy = (float)my - center_y;
                             float length = sqrtf(dx * dx + dy * dy);
                             bullets[i].dx = BULLET_SPEED * (dx / length);
                             bullets[i].dy = BULLET_SPEED * (dy / length);
@@ -834,13 +849,13 @@ int main(int argc, char *argv[])
                     if (now - mobs[i].last_attack_time >= mobs[i].attack_interval)
                     {
                         int damage = (mobs[i].type == 3) ? 2 : 1;
-                        playerLocal.lives -= damage;
-                        playerRemote.lives -= damage;
+                        player_set_lives(playerLocal, player_get_lives(playerLocal) - damage);
+                        player_set_lives(playerRemote, player_get_lives(playerRemote) - damage);
                         network_send_damage(damage); // Skicka damage till klienten
                         mobs[i].last_attack_time = now;
 
                         // Kontrollera om spelet är över
-                        if (playerLocal.lives <= 0)
+                        if (player_get_lives(playerLocal) <= 0)
                         {
                             network_send_game_over();
                             int result = showGameOver(renderer);
@@ -883,7 +898,7 @@ int main(int argc, char *argv[])
                 {
                     if (mobs[j].active && SDL_HasIntersection(&bullets[i].rect, &mobs[j].rect))
                     {
-                        mobs[j].health -= playerLocal.damage;
+                        mobs[j].health -= player_get_damage(playerLocal);
                         if (mobs[j].health <= 0)
                         {
                             mobs[j].active = false;
@@ -916,19 +931,20 @@ int main(int argc, char *argv[])
         {
             if (!mobs[i].active || freeze_active)
                 continue;
-
+            SDL_Rect rectL = player_get_rect(playerLocal);
+            SDL_Rect rectR = player_get_rect(playerRemote);
             // Beräkna avstånd till Local
-            float dxL = (playerLocal.rect.x + playerLocal.rect.w / 2.0f) - (mobs[i].rect.x + mobs[i].rect.w / 2.0f);
-            float dyL = (playerLocal.rect.y + playerLocal.rect.h / 2.0f) - (mobs[i].rect.y + mobs[i].rect.h / 2.0f);
+            float dxL = (rectL.x + rectL.w / 2.0f) - (mobs[i].rect.x + mobs[i].rect.w / 2.0f);
+            float dyL = (rectL.y + rectL.h / 2.0f) - (mobs[i].rect.y + mobs[i].rect.h / 2.0f);
             float distL = sqrtf(dxL * dxL + dyL * dyL);
 
             // Beräkna avstånd till Remote
-            float dxR = (playerRemote.rect.x + playerRemote.rect.w / 2.0f) - (mobs[i].rect.x + mobs[i].rect.w / 2.0f);
-            float dyR = (playerRemote.rect.y + playerRemote.rect.h / 2.0f) - (mobs[i].rect.y + mobs[i].rect.h / 2.0f);
+            float dxR = (rectR.x + rectR.w / 2.0f) - (mobs[i].rect.x + mobs[i].rect.w / 2.0f);
+            float dyR = (rectR.y + rectR.h / 2.0f) - (mobs[i].rect.y + mobs[i].rect.h / 2.0f);
             float distR = sqrtf(dxR * dxR + dyR * dyR);
 
             // Välj den närmaste spelaren som mål
-            SDL_Rect target = (distL < distR) ? playerLocal.rect : playerRemote.rect;
+            SDL_Rect target = (distL < distR) ? player_get_rect(playerLocal) : player_get_rect(playerRemote);
 
             // Uppdatera mobben mot target
             update_mob(&mobs[i], target);
@@ -983,7 +999,7 @@ int main(int argc, char *argv[])
         // Hantera kollisioner och effekter för powerups
         for (int i = 0; i < MAX_POWERUPS; i++)
         {
-            check_powerup_collision(&powerups[i], playerLocal.rect, &playerLocal.lives, &playerLocal.speed, &playerLocal.damage, now, &effects);
+            check_powerup_collision(&powerups[i], playerLocal, now, &effects);
             if (powerups[i].picked_up && !powerups[i].sound_played)
             {
                 // 1) Ta bort powerup‑slot lokalt och synka med peer
@@ -1015,7 +1031,7 @@ int main(int argc, char *argv[])
                 powerups[i].sound_played = true;
             }
         }
-        update_effects(&effects, &playerLocal.speed, &playerLocal.damage, now, powerups);
+        update_effects(&effects, playerLocal, now, powerups);
 
         // Renderingsfasen
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -1039,19 +1055,22 @@ int main(int argc, char *argv[])
 
         SDL_Point center = {PLAYER_SIZE / 2, PLAYER_SIZE / 2};
 
-        SDL_RenderCopyEx(renderer, tex_player, NULL, &playerLocal.rect,
-                         playerLocal.aim_angle, &center, SDL_FLIP_NONE);
+        SDL_Rect rect = player_get_rect(playerLocal);
+        SDL_RenderCopyEx(renderer, tex_player, NULL, &rect,
+                         player_get_aim_angle(playerLocal), &center, SDL_FLIP_NONE);
 
-        SDL_RenderCopyEx(renderer, tex_player, NULL, &playerRemote.rect,
-                         playerRemote.aim_angle, &center, SDL_FLIP_NONE);
+        SDL_Rect rectRemote = player_get_rect(playerRemote);
+        SDL_RenderCopyEx(renderer, tex_player, NULL, &rectRemote,
+                         player_get_aim_angle(playerRemote), &center, SDL_FLIP_NONE);
 
-        draw_powerup_bars(renderer, &playerLocal, powerups, now);
+        draw_powerup_bars(renderer, playerLocal, powerups, now);
 
+        SDL_Rect player_rect = player_get_rect(playerLocal);
         for (int i = 0; i < MAX_MOBS; i++)
         {
             if (mobs[i].active)
             {
-                draw_mob(renderer, &mobs[i], playerLocal.rect);
+                draw_mob(renderer, &mobs[i], player_rect);
             }
         }
 
@@ -1080,13 +1099,14 @@ int main(int argc, char *argv[])
         SDL_RenderFillRect(renderer, &bg);
 
         // 2) Rita grön förgrund (proportionellt mot liv kvar)
-        float frac = (float)playerLocal.lives / (float)MAX_HEALTH;
+        int lives = player_get_lives(playerLocal);
+        float frac = (float)lives / (float)MAX_HEALTH;
         SDL_Rect fg = {barX, barY, (int)(barW * frac), barH};
         SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
         SDL_RenderFillRect(renderer, &fg);
 
         // Skriver ut score och lives på konsolen
-        printf("Score: %d | Lives: %d\n", score, playerLocal.lives);
+        printf("Score: %d | Lives: %d\n", score, lives);
         SDL_RenderPresent(renderer);
 
         SDL_Delay(16);
