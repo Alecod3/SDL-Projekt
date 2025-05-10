@@ -492,21 +492,18 @@ int main(int argc, char *argv[])
 
     // Skapa bullets, mobs och powerups
     Bullet bullets[MAX_BULLETS] = {0};
-    Mob *mobs[MAX_MOBS];
+    Mob mobs[MAX_MOBS];
     for (int i = 0; i < MAX_MOBS; i++)
     {
         int x, y, type, health;
-        SDL_Rect rect;
         do
         {
             x = rand() % (SCREEN_WIDTH - MOB_SIZE);
             y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
-            type = rand() % 4;
+            type = rand() % 4; // Antag 4 typer
             health = (type == 3) ? 2 : 1;
-
             mobs[i] = create_mob(x, y, MOB_SIZE, type, health);
-            rect = mob_get_rect(mobs[i]);
-        } while (check_mob_collision(&rect, mobs, i));
+        } while (check_mob_collision(&mobs[i].rect, mobs, i));
     }
 
     Powerup powerups[MAX_POWERUPS];
@@ -535,16 +532,10 @@ int main(int argc, char *argv[])
 
         // Skicka befintliga mobs
         for (int i = 0; i < MAX_MOBS; i++)
-        {
-            if (mob_is_active(mobs[i]))
-            {
-                SDL_Rect r = mob_get_rect(mobs[i]);
+            if (mobs[i].active)
                 network_send_spawn_mob(i,
-                                       r.x, r.y,
-                                       mob_get_type(mobs[i]),
-                                       mob_get_health(mobs[i]));
-            }
-        }
+                                       mobs[i].rect.x, mobs[i].rect.y,
+                                       mobs[i].type, mobs[i].health);
 
         // Skicka befintliga powerups
         for (int i = 0; i < MAX_POWERUPS; i++)
@@ -691,9 +682,8 @@ int main(int argc, char *argv[])
                 int idx;
                 memcpy(&idx, pktIn->data + 1, sizeof(int));
                 if (idx >= 0 && idx < MAX_MOBS)
-                    mob_set_active(mobs[idx], false);
+                    mobs[idx].active = false;
             }
-
             else if (msg == MSG_FREEZE)
             {
                 effects.freeze_active = true;
@@ -849,22 +839,22 @@ int main(int argc, char *argv[])
         {
             for (int i = 0; i < MAX_MOBS; i++)
             {
-                if (!mob_is_active(mobs[i]))
+                if (!mobs[i].active)
                     continue;
 
-                if (mob_is_attacking(mobs[i]))
+                if (mobs[i].attacking)
                 {
                     Uint32 now = SDL_GetTicks();
-                    if (now - mob_get_last_attack_time(mobs[i]) >= mob_get_attack_interval(mobs[i]))
+                    // Slå bara om attack_interval passerat
+                    if (now - mobs[i].last_attack_time >= mobs[i].attack_interval)
                     {
-                        int damage = (mob_get_type(mobs[i]) == 3) ? 2 : 1;
-
+                        int damage = (mobs[i].type == 3) ? 2 : 1;
                         player_set_lives(playerLocal, player_get_lives(playerLocal) - damage);
                         player_set_lives(playerRemote, player_get_lives(playerRemote) - damage);
-                        network_send_damage(damage);
+                        network_send_damage(damage); // Skicka damage till klienten
+                        mobs[i].last_attack_time = now;
 
-                        mob_set_last_attack_time(mobs[i], now);
-
+                        // Kontrollera om spelet är över
                         if (player_get_lives(playerLocal) <= 0)
                         {
                             network_send_game_over();
@@ -896,46 +886,38 @@ int main(int argc, char *argv[])
             {
                 bullets[i].rect.x += (int)bullets[i].dx;
                 bullets[i].rect.y += (int)bullets[i].dy;
-
                 if (bullets[i].rect.x < 0 || bullets[i].rect.x > SCREEN_WIDTH ||
                     bullets[i].rect.y < 0 || bullets[i].rect.y > SCREEN_HEIGHT)
                 {
                     bullets[i].active = false;
+
                     network_send_remove_bullet(i);
                     continue;
                 }
-
                 for (int j = 0; j < MAX_MOBS; j++)
                 {
-                    SDL_Rect mobRect = mob_get_rect(mobs[j]);
-                    if (mob_is_active(mobs[j]) && SDL_HasIntersection(&bullets[i].rect, &mobRect))
-
+                    if (mobs[j].active && SDL_HasIntersection(&bullets[i].rect, &mobs[j].rect))
                     {
-                        int new_health = mob_get_health(mobs[j]) - player_get_damage(playerLocal);
-                        mob_set_health(mobs[j], new_health);
-
-                        if (new_health <= 0)
+                        mobs[j].health -= player_get_damage(playerLocal);
+                        if (mobs[j].health <= 0)
                         {
-                            mob_set_active(mobs[j], false);
+                            mobs[j].active = false;
                             network_send_remove_mob(j);
                             network_send_remove_bullet(i);
                             score += 100;
-
                             if (rand() % 4 == 0)
-                            {
-                                SDL_Rect r = mob_get_rect(mobs[j]);
+                            { // 25% chans att en mob släpper en powerup vid död
                                 for (int k = 0; k < MAX_POWERUPS; k++)
                                 {
-                                    if (!powerups[k].active && !powerups[k].picked_up)
+                                    if (!powerups[j].active && !powerups[j].picked_up)
                                     {
                                         PowerupType t = rand() % 4;
-                                        powerups[k] = create_powerup(t, r.x, r.y); // ✅ korrekt
+                                        powerups[j] = create_powerup(t, mobs[j].rect.x, mobs[j].rect.y);
                                         break;
                                     }
                                 }
                             }
                         }
-
                         bullets[i].active = false;
                         break;
                     }
@@ -947,27 +929,25 @@ int main(int argc, char *argv[])
         bool freeze_active = effects.freeze_active;
         for (int i = 0; i < MAX_MOBS; i++)
         {
-            if (!mob_is_active(mobs[i]) || freeze_active)
+            if (!mobs[i].active || freeze_active)
                 continue;
-
             SDL_Rect rectL = player_get_rect(playerLocal);
             SDL_Rect rectR = player_get_rect(playerRemote);
-            SDL_Rect mobRect = mob_get_rect(mobs[i]);
-
             // Beräkna avstånd till Local
-            float dxL = (rectL.x + rectL.w / 2.0f) - (mobRect.x + mobRect.w / 2.0f);
-            float dyL = (rectL.y + rectL.h / 2.0f) - (mobRect.y + mobRect.h / 2.0f);
+            float dxL = (rectL.x + rectL.w / 2.0f) - (mobs[i].rect.x + mobs[i].rect.w / 2.0f);
+            float dyL = (rectL.y + rectL.h / 2.0f) - (mobs[i].rect.y + mobs[i].rect.h / 2.0f);
             float distL = sqrtf(dxL * dxL + dyL * dyL);
 
             // Beräkna avstånd till Remote
-            float dxR = (rectR.x + rectR.w / 2.0f) - (mobRect.x + mobRect.w / 2.0f);
-            float dyR = (rectR.y + rectR.h / 2.0f) - (mobRect.y + mobRect.h / 2.0f);
+            float dxR = (rectR.x + rectR.w / 2.0f) - (mobs[i].rect.x + mobs[i].rect.w / 2.0f);
+            float dyR = (rectR.y + rectR.h / 2.0f) - (mobs[i].rect.y + mobs[i].rect.h / 2.0f);
             float distR = sqrtf(dxR * dxR + dyR * dyR);
 
             // Välj den närmaste spelaren som mål
-            SDL_Rect target = (distL < distR) ? rectL : rectR;
+            SDL_Rect target = (distL < distR) ? player_get_rect(playerLocal) : player_get_rect(playerRemote);
 
-            update_mob(mobs[i], target); // mobs[i] är redan en Mob*
+            // Uppdatera mobben mot target
+            update_mob(&mobs[i], target);
         }
 
         // Spawna nya mobs var 1,5 sekund
@@ -976,7 +956,7 @@ int main(int argc, char *argv[])
         {
             for (int i = 0; i < MAX_MOBS; i++)
             {
-                if (!mob_is_active(mobs[i]))
+                if (!mobs[i].active)
                 {
                     int x = rand() % (SCREEN_WIDTH - MOB_SIZE);
                     int y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
@@ -1088,9 +1068,9 @@ int main(int argc, char *argv[])
         SDL_Rect player_rect = player_get_rect(playerLocal);
         for (int i = 0; i < MAX_MOBS; i++)
         {
-            if (!mob_is_active(mobs[i]))
+            if (mobs[i].active)
             {
-                draw_mob(renderer, mobs[i], player_rect);
+                draw_mob(renderer, &mobs[i], player_rect);
             }
         }
 

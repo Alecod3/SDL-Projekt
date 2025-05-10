@@ -1,73 +1,58 @@
 #include "mob.h"
 #include <stdlib.h>
 #include <math.h>
+#include <SDL2/SDL.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-struct Mob
+Mob create_mob(int x, int y, int size, int type, int health)
 {
-    SDL_Rect rect;
-    bool active;
-    int type;
-    int health;
-    float speed;
-    bool attacking;
-    Uint32 last_attack_time;
-    Uint32 attack_interval;
-};
-
-Mob *create_mob(int x, int y, int size, int type, int health)
-{
-    Mob *m = malloc(sizeof(Mob));
-    m->rect.x = x;
-    m->rect.y = y;
+    Mob m;
+    m.rect.x = x;
+    m.rect.y = y;
 
     switch (type)
     {
     case 0:
-        m->rect.w = m->rect.h = 20;
-        m->speed = 3.5f;
+        m.rect.w = m.rect.h = 20;
+        m.speed = 3.5f;
         break;
     case 1:
-        m->rect.w = m->rect.h = 30;
-        m->speed = 3.0f;
+        m.rect.w = m.rect.h = 30;
+        m.speed = 3.0f;
         break;
     case 2:
-        m->rect.w = m->rect.h = 40;
-        m->speed = 2.4f;
+        m.rect.w = m.rect.h = 40;
+        m.speed = 2.4f;
         break;
     case 3:
-        m->rect.w = m->rect.h = 50;
-        m->speed = 1.8f;
+        m.rect.w = m.rect.h = 50;
+        m.speed = 1.8f;
         break;
     default:
-        m->rect.w = m->rect.h = size;
-        m->speed = 3.0f;
+        m.rect.w = m.rect.h = size;
+        m.speed = 3.0f;
         break;
     }
 
-    m->active = true;
-    m->type = type;
-    m->health = health;
-    m->attacking = false;
-    m->last_attack_time = 0;
-    m->attack_interval = 1000;
+    m.active = true;
+    m.type = type;
+    m.health = health;
+
+    m.attacking = false;
+    m.last_attack_time = 0;
+    m.attack_interval = 1000; // kan justeras
+
     return m;
 }
 
-void destroy_mob(Mob *m)
-{
-    free(m);
-}
-
-bool check_mob_collision(SDL_Rect *mob_rect, Mob **mobs, int mob_index)
+bool check_mob_collision(SDL_Rect *mob_rect, Mob mobs[], int mob_index)
 {
     for (int i = 0; i < MAX_MOBS; i++)
     {
-        if (i != mob_index && mob_is_active(mobs[i]) &&
-            SDL_HasIntersection(mob_rect, &mobs[i]->rect))
+        if (i != mob_index && mobs[i].active && SDL_HasIntersection(mob_rect, &mobs[i].rect))
         {
             return true;
         }
@@ -80,6 +65,7 @@ void update_mob(Mob *mob, SDL_Rect player_rect)
     if (!mob->active)
         return;
 
+    // Om mobben når spelaren: gå in i attacking‐läge och sluta röra på dig
     if (SDL_HasIntersection(&mob->rect, &player_rect))
     {
         mob->attacking = true;
@@ -90,6 +76,7 @@ void update_mob(Mob *mob, SDL_Rect player_rect)
         mob->attacking = false;
     }
 
+    // Rörelse mot spelaren
     float dx = (player_rect.x + player_rect.w / 2) - (mob->rect.x + mob->rect.w / 2);
     float dy = (player_rect.y + player_rect.h / 2) - (mob->rect.y + mob->rect.h / 2);
     float len = sqrtf(dx * dx + dy * dy);
@@ -98,6 +85,7 @@ void update_mob(Mob *mob, SDL_Rect player_rect)
         dx /= len;
         dy /= len;
 
+        // Lägg till lite slumpmässig offset för rörelsen
         dx += ((rand() % 100) - 50) / 100.0f * 0.3f;
         dy += ((rand() % 100) - 50) / 100.0f * 0.3f;
         len = sqrtf(dx * dx + dy * dy);
@@ -112,6 +100,8 @@ void update_mob(Mob *mob, SDL_Rect player_rect)
             move_y = dy > 0 ? 1 : -1;
 
         SDL_Rect new_pos = mob->rect;
+        // new_pos.x += 0;
+        // new_pos.y += 0;
         new_pos.x += move_x;
         new_pos.y += move_y;
 
@@ -128,67 +118,63 @@ void update_mob(Mob *mob, SDL_Rect player_rect)
     }
 }
 
+extern SDL_Texture *tex_mob;
+
 void draw_mob(SDL_Renderer *renderer, const Mob *mob, SDL_Rect player_rect)
 {
     if (!mob->active)
         return;
 
+    // Sätt färg beroende på typ (tint-färg)
     switch (mob->type)
     {
     case 0:
-        SDL_SetTextureColorMod(tex_mob, 255, 0, 0);
+        SDL_SetTextureColorMod(tex_mob, 255, 0, 0); // Röd
         break;
     case 1:
-        SDL_SetTextureColorMod(tex_mob, 0, 0, 255);
+        SDL_SetTextureColorMod(tex_mob, 0, 0, 255); // Blå
         break;
     case 2:
-        SDL_SetTextureColorMod(tex_mob, 255, 165, 0);
+        SDL_SetTextureColorMod(tex_mob, 255, 165, 0); // Orange
         break;
     case 3:
-        SDL_SetTextureColorMod(tex_mob, 128, 0, 128);
+        SDL_SetTextureColorMod(tex_mob, 128, 0, 128); // Lila
         break;
     default:
-        SDL_SetTextureColorMod(tex_mob, 255, 255, 255);
+        SDL_SetTextureColorMod(tex_mob, 255, 255, 255); // Vit (neutral)
         break;
     }
 
-    float dx = (player_rect.x + player_rect.w / 2) - (mob->rect.x + mob->rect.w / 2);
-    float dy = (player_rect.y + player_rect.h / 2) - (mob->rect.y + mob->rect.h / 2);
-    float angle = atan2f(dy, dx) * 180.0f / M_PI;
+    if (tex_mob)
+    {
+        // Beräkna riktning mot spelaren
+        float dx = (player_rect.x + player_rect.w / 2) - (mob->rect.x + mob->rect.w / 2);
+        float dy = (player_rect.y + player_rect.h / 2) - (mob->rect.y + mob->rect.h / 2);
+        float angle = atan2f(dy, dx) * 180.0f / (float)M_PI;
 
-    SDL_RenderCopyEx(renderer, tex_mob, NULL, &mob->rect, angle, NULL, SDL_FLIP_NONE);
+        SDL_RenderCopyEx(renderer, tex_mob, NULL, &mob->rect, angle, NULL, SDL_FLIP_NONE);
+    }
+    else
+    {
+        // Fallback om tex_mob inte laddats
+        switch (mob->type)
+        {
+        case 0:
+            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+            break;
+        case 1:
+            SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
+            break;
+        case 2:
+            SDL_SetRenderDrawColor(renderer, 255, 165, 0, 255);
+            break;
+        case 3:
+            SDL_SetRenderDrawColor(renderer, 128, 0, 128, 255);
+            break;
+        default:
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            break;
+        }
+        SDL_RenderFillRect(renderer, &mob->rect);
+    }
 }
-
-// Getters/setters
-
-bool mob_is_attacking(const Mob *m)
-{
-    return m->attacking;
-}
-
-void mob_set_attacking(Mob *m, bool attacking)
-{
-    m->attacking = attacking;
-}
-
-Uint32 mob_get_last_attack_time(const Mob *m)
-{
-    return m->last_attack_time;
-}
-
-void mob_set_last_attack_time(Mob *m, Uint32 time)
-{
-    m->last_attack_time = time;
-}
-
-Uint32 mob_get_attack_interval(const Mob *m)
-{
-    return m->attack_interval;
-}
-
-SDL_Rect mob_get_rect(const Mob *m) { return m->rect; }
-bool mob_is_active(const Mob *m) { return m->active; }
-void mob_set_active(Mob *m, bool active) { m->active = active; }
-int mob_get_type(const Mob *m) { return m->type; }
-int mob_get_health(const Mob *m) { return m->health; }
-void mob_set_health(Mob *m, int hp) { m->health = hp; }
