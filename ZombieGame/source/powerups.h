@@ -2,7 +2,7 @@
 #define POWERUPS_H
 #define DEFAULT_PLAYER_SPEED 3
 #define DEFAULT_PLAYER_DAMAGE 1
-#define MAX_HEALTH 3
+#define MAX_HEALTH 6
 #define MAX_POWERUPS 5
 
 #include <SDL2/SDL.h>

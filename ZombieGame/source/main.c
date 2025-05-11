@@ -24,6 +24,8 @@
 #define BULLET_SPEED 7
 #define MAX_BULLETS 10
 #define MAX_MOBS 10
+#define MOB_SPAWN_INTERVAL_MS 1500
+#define MOBS_SPAWN_PER_WAVE 3
 #define MAX_POWERUPS 5
 #define HEALTH_BAR_WIDTH 200
 #define HEALTH_BAR_HEIGHT 20
@@ -974,9 +976,10 @@ int main(int argc, char *argv[])
 
         // Spawna nya mobs var 1,5 sekund
         now = SDL_GetTicks();
-        if (mode == MODE_HOST && now - last_mob_spawn_time >= 1500)
+        if (mode == MODE_HOST && now - last_mob_spawn_time >= MOB_SPAWN_INTERVAL_MS)
         {
-            for (int i = 0; i < MAX_MOBS; i++)
+            int spawned = 0;
+            for (int i = 0; i < MAX_MOBS && spawned < MOBS_SPAWN_PER_WAVE; i++)
             {
                 if (!mobs[i].active)
                 {
@@ -1006,7 +1009,8 @@ int main(int argc, char *argv[])
 
                     mobs[i] = create_mob(x, y, MOB_SIZE, type, health);
                     network_send_spawn_mob(i, x, y, type, health);
-                    break;
+
+                    spawned++;
                 }
             }
             last_mob_spawn_time = now;
