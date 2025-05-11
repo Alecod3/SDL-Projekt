@@ -105,16 +105,7 @@ void update_mob(Mob *mob, SDL_Rect player_rect)
         new_pos.x += move_x;
         new_pos.y += move_y;
 
-        if (new_pos.x >= 0 && new_pos.x + mob->rect.w <= SCREEN_WIDTH &&
-            new_pos.y >= 0 && new_pos.y + mob->rect.h <= SCREEN_HEIGHT)
-        {
-            mob->rect = new_pos;
-        }
-        else
-        {
-            mob->rect.x += (rand() % 3 - 1) * (int)(mob->speed);
-            mob->rect.y += (rand() % 3 - 1) * (int)(mob->speed);
-        }
+        mob->rect = new_pos;
     }
 }
 

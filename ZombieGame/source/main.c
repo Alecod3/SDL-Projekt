@@ -23,7 +23,7 @@
 #define BULLET_SIZE 7
 #define BULLET_SPEED 7
 #define MAX_BULLETS 10
-#define MAX_MOBS 5
+#define MAX_MOBS 10
 #define MAX_POWERUPS 5
 #define HEALTH_BAR_WIDTH 200
 #define HEALTH_BAR_HEIGHT 20
@@ -501,14 +501,31 @@ int main(int argc, char *argv[])
     for (int i = 0; i < MAX_MOBS; i++)
     {
         int x, y, type, health;
-        do
+        // välj slumpvis sida: 0=vänster,1=höger,2=ovan,3=under
+        int side = rand() % 4;
+        switch (side)
         {
-            x = rand() % (SCREEN_WIDTH - MOB_SIZE);
-            y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
-            type = rand() % 4; // Antag 4 typer
-            health = (type == 3) ? 2 : 1;
-            mobs[i] = create_mob(x, y, MOB_SIZE, type, health);
-        } while (check_mob_collision(&mobs[i].rect, mobs, i));
+        case 0:
+            x = -MOB_SIZE;
+            y = rand() % SCREEN_HEIGHT;
+            break;
+        case 1:
+            x = SCREEN_WIDTH;
+            y = rand() % SCREEN_HEIGHT;
+            break;
+        case 2:
+            x = rand() % SCREEN_WIDTH;
+            y = -MOB_SIZE;
+            break;
+        case 3:
+            x = rand() % SCREEN_WIDTH;
+            y = SCREEN_HEIGHT;
+            break;
+        }
+        type = rand() % 4;
+        health = (type == 3) ? 2 : 1;
+        // hoppa över kollisionskontroll vid init
+        mobs[i] = create_mob(x, y, MOB_SIZE, type, health);
     }
 
     Powerup powerups[MAX_POWERUPS];
@@ -963,16 +980,32 @@ int main(int argc, char *argv[])
             {
                 if (!mobs[i].active)
                 {
-                    int x = rand() % (SCREEN_WIDTH - MOB_SIZE);
-                    int y = rand() % (SCREEN_HEIGHT - MOB_SIZE);
-                    int type = rand() % 4;
-                    int health = (type == 3) ? 2 : 1;
+                    int x, y, type, health;
+                    int side = rand() % 4;
+                    switch (side)
+                    {
+                    case 0:
+                        x = -MOB_SIZE;
+                        y = rand() % SCREEN_HEIGHT;
+                        break;
+                    case 1:
+                        x = SCREEN_WIDTH;
+                        y = rand() % SCREEN_HEIGHT;
+                        break;
+                    case 2:
+                        x = rand() % SCREEN_WIDTH;
+                        y = -MOB_SIZE;
+                        break;
+                    case 3:
+                        x = rand() % SCREEN_WIDTH;
+                        y = SCREEN_HEIGHT;
+                        break;
+                    }
+                    type = rand() % 4;
+                    health = (type == 3) ? 2 : 1;
 
-                    // 1) Skapa lokalt
                     mobs[i] = create_mob(x, y, MOB_SIZE, type, health);
-                    // 2) Synka till klienten med exakta slot-index
                     network_send_spawn_mob(i, x, y, type, health);
-
                     break;
                 }
             }
