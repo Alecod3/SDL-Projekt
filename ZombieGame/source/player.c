@@ -14,6 +14,10 @@ struct Player
     int lives;
     float aim_angle;
     SDL_Color tint;
+
+    int ammo;
+    bool reloading;
+    Uint32 reload_start_time;
 };
 
 Player *create_player(int x, int y, int size, int speed, int damage, int lives)
@@ -28,12 +32,48 @@ Player *create_player(int x, int y, int size, int speed, int damage, int lives)
     p->lives = lives;
     p->aim_angle = 0.0f;
     p->tint = (SDL_Color){255, 255, 255, 255};
+
+    p->ammo = 30;
+    p->reloading = false;
+    p->reload_start_time = 0;
     return p;
+}
+
+Uint32 player_get_reload_start_time(const Player *p)
+{
+    return p->reload_start_time;
 }
 
 SDL_Rect player_get_rect(const Player *p)
 {
     return p->rect;
+}
+
+int player_get_ammo(const Player *p)
+{
+    return p->ammo;
+}
+
+void player_set_ammo(Player *p, int ammo)
+{
+    p->ammo = ammo;
+}
+
+bool player_is_reloading(const Player *p)
+{
+    return p->reloading;
+}
+
+void player_start_reload(Player *p, Uint32 now)
+{
+    p->reloading = true;
+    p->reload_start_time = now;
+}
+
+void player_finish_reload(Player *p)
+{
+    p->reloading = false;
+    p->ammo = 15;
 }
 
 int player_get_lives(const Player *p)

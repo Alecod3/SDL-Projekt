@@ -35,7 +35,13 @@ void player_set_speed(Player *p, int speed);
 int player_get_damage(const Player *p);
 void player_set_damage(Player *p, int damage);
 void player_set_aim_angle(Player *p, float angle);
+int player_get_ammo(const Player *p);
+void player_set_ammo(Player *p, int ammo);
+bool player_is_reloading(const Player *p);
+void player_start_reload(Player *p, Uint32 now);
+void player_finish_reload(Player *p);
 
 extern SDL_Texture *tex_player;
+Uint32 player_get_reload_start_time(const Player *p);
 
 #endif

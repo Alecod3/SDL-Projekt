@@ -580,9 +580,19 @@ int main(int argc, char *argv[])
             }
             if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
             {
+                if (player_is_reloading(playerLocal))
+                    break;
+
+                if (player_get_ammo(playerLocal) <= 0)
+                {
+                    player_start_reload(playerLocal, SDL_GetTicks());
+                    break;
+                }
+
+                player_set_ammo(playerLocal, player_get_ammo(playerLocal) - 1);
+
                 int mx, my;
                 SDL_GetMouseState(&mx, &my);
-                // Skjut en bullet med spelarens damage
 
                 for (int i = 0; i < MAX_BULLETS; i++)
                 {
@@ -800,6 +810,14 @@ int main(int argc, char *argv[])
             }
         }
         update_player(playerLocal, state);
+
+        if (player_is_reloading(playerLocal))
+        {
+            if (SDL_GetTicks() - player_get_reload_start_time(playerLocal) >= 2000)
+            {
+                player_finish_reload(playerLocal);
+            }
+        }
 
         int mx, my;
         SDL_GetMouseState(&mx, &my);
@@ -1149,6 +1167,30 @@ int main(int argc, char *argv[])
 
         // Skriver ut score och lives på konsolen
         printf("Score: %d | Lives: %d\n", score, lives);
+
+        // Visar ammo //
+
+        char ammo_text[32];
+        int ammo = player_get_ammo(playerLocal);
+        sprintf(ammo_text, "%d/30", ammo);
+
+        SDL_Color color = {255, 255, 255, 255}; // vit
+        TTF_Font *font_to_use = uiFont;
+
+        // Beräkna position
+        int text_width = 0, text_height = 0;
+        TTF_SizeText(font_to_use, ammo_text, &text_width, &text_height);
+        int x = SCREEN_WIDTH - text_width - 10;
+        int y = SCREEN_HEIGHT - text_height - 10;
+
+        // Rendera text
+        SDL_Surface *surf = TTF_RenderText_Blended(font_to_use, ammo_text, color);
+        SDL_Texture *tex = SDL_CreateTextureFromSurface(renderer, surf);
+        SDL_Rect dst = {x, y, surf->w, surf->h};
+        SDL_FreeSurface(surf);
+        SDL_RenderCopy(renderer, tex, NULL, &dst);
+        SDL_DestroyTexture(tex);
+        //--------------------------------------------------------------------------//
         SDL_RenderPresent(renderer);
 
         SDL_Delay(16);
