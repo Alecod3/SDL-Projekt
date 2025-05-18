@@ -49,6 +49,16 @@ SDL_Rect player_get_rect(const Player *p)
     return p->rect;
 }
 
+void network_send_set_max_mobs(int max_mobs)
+{
+    Uint8 *d = pktOut->data;
+    d[0] = MSG_SET_MAX_MOBS;
+    memcpy(d + 1, &max_mobs, sizeof(int));
+    pktOut->len = 1 + sizeof(int);
+    pktOut->address = peerAddr;
+    SDLNet_UDP_Send(netSocket, -1, pktOut);
+}
+
 int player_get_ammo(const Player *p)
 {
     return p->ammo;

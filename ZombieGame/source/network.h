@@ -30,7 +30,8 @@ typedef enum
     MSG_FREEZE = 7,
     MSG_DAMAGE = 8,
     MSG_SET_HP = 9,
-    MSG_GAME_OVER = 10
+    MSG_GAME_OVER = 10,
+    MSG_SET_MAX_MOBS = 11
 } MsgType;
 
 void network_send_set_hp(int hp);
@@ -47,5 +48,6 @@ int network_init(NetMode mode, const char *server_ip);
 void network_shutdown(void);
 bool network_receive(int *out_x, int *out_y);
 void network_send(int x, int y, float angle);
+void network_send_set_max_mobs(int max_mobs);
 
 #endif

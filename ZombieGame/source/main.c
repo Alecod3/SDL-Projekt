@@ -23,7 +23,7 @@
 #define BULLET_SIZE 7
 #define BULLET_SPEED 7
 #define MAX_BULLETS 10
-#define MAX_MOBS 10
+#define MAX_MOBS 40
 #define MOB_SPAWN_INTERVAL_MS 1500
 #define MOBS_SPAWN_PER_WAVE 3
 #define MAX_POWERUPS 5
@@ -497,10 +497,14 @@ int main(int argc, char *argv[])
 
     srand((unsigned int)time(NULL));
 
+    Uint32 start_time = SDL_GetTicks();
+    int current_max_mobs = 10; // Börja med 10 mobs
+    int last_sent_max_mobs = 0;
+
     // Skapa bullets, mobs och powerups
     Bullet bullets[MAX_BULLETS] = {0};
     Mob mobs[MAX_MOBS];
-    for (int i = 0; i < MAX_MOBS; i++)
+    for (int i = 0; i < current_max_mobs; i++)
     {
         int x, y, type, health;
         // välj slumpvis sida: 0=vänster,1=höger,2=ovan,3=under
@@ -555,7 +559,7 @@ int main(int argc, char *argv[])
         wait_for_client(renderer, uiFont);
 
         // Skicka befintliga mobs
-        for (int i = 0; i < MAX_MOBS; i++)
+        for (int i = 0; i < current_max_mobs; i++)
             if (mobs[i].active)
                 network_send_spawn_mob(i,
                                        mobs[i].rect.x, mobs[i].rect.y,
@@ -664,7 +668,7 @@ int main(int argc, char *argv[])
                 memcpy(&type, pktIn->data + off, sizeof(int));
                 off += sizeof(int);
                 memcpy(&health, pktIn->data + off, sizeof(int));
-                if (idx >= 0 && idx < MAX_MOBS)
+                if (idx >= 0 && idx < current_max_mobs)
                     mobs[idx] = create_mob(x, y, MOB_SIZE, type, health);
             }
             else if (msg == MSG_SPAWN_PWR)
@@ -715,7 +719,7 @@ int main(int argc, char *argv[])
             {
                 int idx;
                 memcpy(&idx, pktIn->data + 1, sizeof(int));
-                if (idx >= 0 && idx < MAX_MOBS)
+                if (idx >= 0 && idx < current_max_mobs)
                     mobs[idx].active = false;
             }
             else if (msg == MSG_FREEZE)
@@ -801,6 +805,12 @@ int main(int argc, char *argv[])
                     running = false;
                 }
             }
+            else if (msg == MSG_SET_MAX_MOBS)
+            {
+                int new_max;
+                memcpy(&new_max, pktIn->data + 1, sizeof(int));
+                current_max_mobs = new_max;
+            }
             else if (msg == MSG_REMOVE_BULLET)
             {
                 int idx;
@@ -879,7 +889,7 @@ int main(int argc, char *argv[])
         // Kollision och attack‑hantering mellan spelare och mobs (endast på host)
         if (mode == MODE_HOST)
         {
-            for (int i = 0; i < MAX_MOBS; i++)
+            for (int i = 0; i < current_max_mobs; i++)
             {
                 if (!mobs[i].active)
                     continue;
@@ -936,7 +946,7 @@ int main(int argc, char *argv[])
                     network_send_remove_bullet(i);
                     continue;
                 }
-                for (int j = 0; j < MAX_MOBS; j++)
+                for (int j = 0; j < current_max_mobs; j++)
                 {
                     if (mobs[j].active && SDL_HasIntersection(&bullets[i].rect, &mobs[j].rect))
                     {
@@ -969,7 +979,7 @@ int main(int argc, char *argv[])
 
         // Uppdatera mobs så att de rör sig mot spelaren (om de inte är frysta)
         bool freeze_active = effects.freeze_active;
-        for (int i = 0; i < MAX_MOBS; i++)
+        for (int i = 0; i < current_max_mobs; i++)
         {
             if (!mobs[i].active || freeze_active)
                 continue;
@@ -994,10 +1004,23 @@ int main(int argc, char *argv[])
 
         // Spawna nya mobs var 1,5 sekund
         now = SDL_GetTicks();
+
+        // Uppdatera tillåtet antal mobs var 10:e sekund (max 40)
+        Uint32 elapsed = (SDL_GetTicks() - start_time) / 10000;
+        int new_max = 10 + elapsed * 10;
+        if (new_max > 40)
+            new_max = 40;
+
+        if (mode == MODE_HOST && new_max != current_max_mobs)
+        {
+            current_max_mobs = new_max;
+            network_send_set_max_mobs(current_max_mobs);
+        }
+
         if (mode == MODE_HOST && now - last_mob_spawn_time >= MOB_SPAWN_INTERVAL_MS)
         {
             int spawned = 0;
-            for (int i = 0; i < MAX_MOBS && spawned < MOBS_SPAWN_PER_WAVE; i++)
+            for (int i = 0; i < current_max_mobs && spawned < MOBS_SPAWN_PER_WAVE; i++)
             {
                 if (!mobs[i].active)
                 {
@@ -1126,7 +1149,7 @@ int main(int argc, char *argv[])
         draw_powerup_bars(renderer, playerLocal, powerups, now);
 
         SDL_Rect player_rect = player_get_rect(playerLocal);
-        for (int i = 0; i < MAX_MOBS; i++)
+        for (int i = 0; i < current_max_mobs; i++)
         {
             if (mobs[i].active)
             {
