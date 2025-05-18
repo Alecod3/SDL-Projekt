@@ -3,12 +3,6 @@
 #include "player.h"
 #include <SDL2/SDL.h>
 
-// Externa texturer definieras här, de bör laddas (ex. med SDL_Image) någon annanstans i projektet.
-SDL_Texture *tex_extralife = NULL;
-SDL_Texture *tex_extraspeed = NULL;
-SDL_Texture *tex_doubledamage = NULL;
-SDL_Texture *tex_freezeenemies = NULL;
-
 // Skapar en ny powerup med position och typ
 Powerup create_powerup(PowerupType type, int x, int y)
 {

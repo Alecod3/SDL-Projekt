@@ -8,8 +8,8 @@
 #define MOB_SIZE 30
 #define MOB_SPEED 3
 #define MAX_MOBS 40
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 600
+#define SCREEN_WIDTH 1200
+#define SCREEN_HEIGHT 900
 
 // ADT för fiender (mobs)
 typedef struct

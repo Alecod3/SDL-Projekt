@@ -5,8 +5,8 @@
 #include <SDL2/SDL.h>
 
 // Definiera konstanter om de inte redan finns globalt
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 600
+#define SCREEN_WIDTH 1200
+#define SCREEN_HEIGHT 900
 #define PLAYER_SIZE 30
 
 // ADT för spelaren
