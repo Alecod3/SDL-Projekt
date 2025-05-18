@@ -73,7 +73,7 @@ void player_start_reload(Player *p, Uint32 now)
 void player_finish_reload(Player *p)
 {
     p->reloading = false;
-    p->ammo = 15;
+    p->ammo = 30;
 }
 
 int player_get_lives(const Player *p)
